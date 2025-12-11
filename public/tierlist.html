@@ -2,35 +2,45 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>나만의 노래 티어리스트</title>
+  <title>My Own Tierlist</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap');
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       min-height: 100vh;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: #f8f8ff;
-      background: radial-gradient(circle at top left, #ff7eb3, #6a4cff 40%, #0f172a 80%);
+      font-family: 'Pretendard', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #f9fafb;
+      background: radial-gradient(circle at top left, #1ed76033, #121212 45%, #050505 80%);
+      background-attachment: fixed;
       display: flex;
       align-items: stretch;
       justify-content: center;
-      padding: 20px;
+      padding: 24px;
     }
+    body.read-only .track-delete {
+      display: none !important;
+    }
+    body.read-only .track-card {
+      cursor: default;
+    }
+
     .app-shell {
       width: 100%;
-      max-width: 1200px;
+      max-width: 1280px;
       display: grid;
-      grid-template-columns: 260px 1fr;
+      grid-template-columns: 320px 1fr;
       gap: 16px;
     }
     .glass-card {
-      background: rgba(15, 23, 42, 0.55);
-      border-radius: 20px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      box-shadow: 0 25px 50px rgba(15, 23, 42, 0.75);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      padding: 16px;
+      background: rgba(18, 18, 18, 0.92);
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 18px;
     }
     .sidebar {
       display: flex;
@@ -38,52 +48,87 @@
       gap: 16px;
     }
     .app-title {
+      font-family: 'Space Grotesk', system-ui;
       font-weight: 700;
-      font-size: 1.35rem;
-      letter-spacing: 0.04em;
-      margin-bottom: 4px;
+      font-size: 1.8rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
     }
     .subtitle {
       font-size: 0.8rem;
-      opacity: 0.7;
+      opacity: 0.0;
+      height: 0;
+      overflow: hidden;
+    }
+
+    .create-form {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 12px;
     }
     .create-form label {
       display: block;
       font-size: 0.8rem;
-      margin-top: 8px;
-      margin-bottom: 4px;
+      margin-top: 6px;
+      margin-bottom: 2px;
       opacity: 0.85;
     }
     .create-form input,
     .create-form select {
       width: 100%;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid rgba(148, 163, 184, 0.6);
-      background: rgba(15, 23, 42, 0.9);
+      padding: 7px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: #181818;
       color: #e5e7eb;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
     }
+
     .btn {
       border: none;
       cursor: pointer;
       border-radius: 999px;
       padding: 8px 12px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      letter-spacing: 0.03em;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
       transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.2s;
     }
     .btn-primary {
-      margin-top: 10px;
-      background: linear-gradient(135deg, #f97316, #22c55e, #06b6d4);
-      color: #0f172a;
-      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.6);
+      margin-top: 12px;
+      align-self: center;
+      width: 70%;
+      max-width: 220px;
+      text-align: center;
+      background: #1ed760;
+      color: #121212;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
     }
-    .btn-primary:hover { transform: translateY(-1px) scale(1.01); }
-    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:hover { background: #1fdf64; transform: translateY(-1px); }
+
+    .btn-danger {
+      background: #ef4444;
+      color: #f9fafb;
+      padding: 6px 10px;
+      border-radius: 999px;
+    }
+    .btn-danger:hover { background: #f97373; }
+
+    .btn-ghost {
+      background: transparent;
+      color: #e5e7eb;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+    }
+    .btn-ghost:hover {
+      background: #374151;
+    }
+
     .tierlist-list {
-      margin-top: 8px;
+      margin-top: 10px;
       max-height: 320px;
       overflow-y: auto;
       padding-right: 4px;
@@ -96,8 +141,8 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(148, 163, 184, 0.5);
+      background: #181818;
+      border: 1px solid rgba(255, 255, 255, 0.06);
       cursor: pointer;
       transition: background 0.15s;
     }
@@ -106,32 +151,64 @@
       opacity: 0.7;
       text-transform: uppercase;
     }
-    .tierlist-item:hover {
-      background: rgba(30, 64, 175, 0.9);
+    .tierlist-item:hover { background: #282828; }
+
+    .pagination {
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: center;
+      font-size: 0.75rem;
     }
+    .page-btn {
+      border: none;
+      background: transparent;
+      color: #9ca3af;
+      padding: 2px 6px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .page-btn.active {
+      background: #1ed760;
+      color: #111827;
+      font-weight: 700;
+    }
+    .page-btn:hover {
+      background: #374151;
+      color: #e5e7eb;
+    }
+
     .main {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
+      overflow-y: auto;
     }
     .header-row {
       display: flex;
       justify-content: space-between;
       gap: 12px;
-      align-items: baseline;
+      align-items: flex-start;
       margin-bottom: 6px;
     }
     .tier-title {
       font-size: 1.2rem;
-      font-weight: 600;
+      font-weight: 700;
     }
     .tier-meta {
       font-size: 0.8rem;
       opacity: 0.8;
     }
-    .waiting-section {
-      margin-bottom: 8px;
+
+    .header-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
     }
+
+    .waiting-section { margin-bottom: 8px; }
     .waiting-header {
       display: flex;
       align-items: center;
@@ -151,75 +228,89 @@
       flex-wrap: wrap;
       gap: 8px;
       border-radius: 12px;
-      background: rgba(15, 23, 42, 0.9);
+      background: #181818;
       border: 1px dashed rgba(148, 163, 184, 0.6);
     }
+
     .add-item-form {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 6px;
-      margin-top: 6px;
+      margin-top: 8px;
       align-items: center;
     }
     .add-item-form input {
       width: 100%;
       padding: 6px 8px;
-      border-radius: 8px;
+      border-radius: 999px;
       border: 1px solid rgba(148, 163, 184, 0.6);
-      background: rgba(15, 23, 42, 0.9);
+      background: #181818;
       color: #e5e7eb;
       font-size: 0.8rem;
     }
     .add-item-form .btn {
       height: 30px;
+      font-size: 0.75rem;
     }
-    .tier-board {
+
+    .info-text {
+      font-size: 0.75rem;
+      opacity: 0.8;
       margin-top: 4px;
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 8px;
     }
-    .tier-column {
-      min-height: 120px;
-      border-radius: 14px;
-      background: radial-gradient(circle at top, rgba(59, 130, 246, 0.4), rgba(15, 23, 42, 0.95));
-      border: 1px solid rgba(191, 219, 254, 0.3);
+
+    .tier-board {
+      margin-top: 8px;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      gap: 10px;
     }
-    .tier-column-header {
-      font-size: 0.8rem;
-      padding: 4px 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      background: rgba(15, 23, 42, 0.95);
-      border-bottom: 1px solid rgba(148, 163, 184, 0.6);
+
+    .tier-section {
+      background: radial-gradient(circle at top left, #2a2a2a, #111);
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      padding: 10px 12px 12px;
+    }
+    .tier-section-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: baseline;
+      margin-bottom: 6px;
     }
-    .tier-dropzone {
-      flex: 1;
-      padding: 6px;
+    .tier-section-header.hof {
+      border-left: 4px solid #1ed760;
+      padding-left: 8px;
+    }
+    .tier-section-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .tier-section-sub {
+      font-size: 0.7rem;
+      opacity: 0.7;
+    }
+    .tier-dropzone.vertical {
+      min-height: 56px;
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
     .tier-dropzone.drag-over {
-      outline: 2px dashed rgba(251, 191, 36, 0.9);
-      outline-offset: -4px;
+      outline: 1px dashed rgba(255, 255, 255, 0.4);
+      outline-offset: -3px;
     }
+
     .track-card {
       position: relative;
       display: grid;
-      grid-template-columns: 40px 1fr auto;
-      gap: 6px;
+      grid-template-columns: 48px 1fr auto;
+      gap: 8px;
       align-items: center;
-      padding: 6px 8px;
+      padding: 8px 10px;
       border-radius: 12px;
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(148, 163, 184, 0.7);
+      background: linear-gradient(120deg, rgba(40,40,40,0.95), rgba(22,22,22,0.95));
+      border: 1px solid rgba(255, 255, 255, 0.03);
       cursor: grab;
       transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.18s ease;
       font-size: 0.8rem;
@@ -229,21 +320,22 @@
       transform: scale(0.97);
     }
     .track-card:hover {
-      background: rgba(30, 64, 175, 0.95);
-      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.8);
+      background: linear-gradient(120deg, #272727, #181818);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
     }
     .track-cover {
-      width: 40px;
-      height: 40px;
+      width: 48px;
+      height: 48px;
       border-radius: 10px;
       object-fit: cover;
-      background: rgba(15, 23, 42, 0.9);
+      background: #111;
       border: 1px solid rgba(148, 163, 184, 0.7);
     }
     .track-meta {
       display: flex;
       flex-direction: column;
       gap: 2px;
+      overflow: hidden;
     }
     .track-title {
       font-weight: 600;
@@ -259,19 +351,47 @@
       overflow: hidden;
     }
     .track-score {
+      min-width: 40px;
+      text-align: right;
       font-weight: 700;
-      font-size: 0.85rem;
-      padding-left: 6px;
+      font-size: 0.9rem;
+      color: #1ed760;
+      padding-left: 4px;
     }
     .badge-waiting {
       position: absolute;
       top: 4px;
-      right: 8px;
+      right: 4px;
       font-size: 0.65rem;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      opacity: 0.75;
+      opacity: 0.7;
     }
+
+    .track-delete {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      border: none;
+      background: rgba(15,23,42,0.9);
+      color: #e5e7eb;
+      font-size: 0.65rem;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+    .track-card:hover .track-delete {
+      display: flex;
+    }
+    .waiting-list .track-card .track-delete {
+      display: flex;
+    }
+
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -282,12 +402,12 @@
       z-index: 50;
     }
     .modal {
-      background: rgba(15, 23, 42, 0.95);
+      background: #181818;
       border-radius: 20px;
       padding: 16px;
       width: 320px;
       border: 1px solid rgba(148, 163, 184, 0.7);
-      box-shadow: 0 25px 50px rgba(15, 23, 42, 0.85);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.85);
     }
     .modal-header {
       display: flex;
@@ -311,24 +431,18 @@
       cursor: pointer;
       font-size: 1rem;
     }
-    .info-text {
-      font-size: 0.75rem;
-      opacity: 0.8;
-      margin-top: 4px;
-    }
+
     @media (max-width: 900px) {
-      .app-shell {
-        grid-template-columns: 1fr;
-      }
+      .app-shell { grid-template-columns: 1fr; }
     }
   </style>
 </head>
-<body>
+<body class="read-only">
   <div class="app-shell">
     <aside class="sidebar glass-card">
       <div>
-        <div class="app-title">나만의 TierList</div>
-        <div class="subtitle">이름 + 비밀번호로 나만의 곡/앨범/아티스트 티어표를 만들어봐.</div>
+        <div class="app-title">My Own Tierlist</div>
+        <div class="subtitle"></div>
       </div>
 
       <form id="createForm" class="create-form">
@@ -344,7 +458,7 @@
         </select>
         <label>티어리스트 제목</label>
         <input type="text" id="tierTitle" placeholder="예: 2025 인생 노래 Top" required />
-        <button type="submit" class="btn btn-primary">나만의 TierList 생성</button>
+        <button type="submit" class="btn btn-primary">나만의 Tierlist 생성</button>
       </form>
 
       <div>
@@ -352,21 +466,29 @@
           공개된 TierList
         </div>
         <div id="tierlistList" class="tierlist-list"></div>
+        <div id="tierlistPagination" class="pagination"></div>
       </div>
     </aside>
 
     <main class="main glass-card">
       <div class="header-row">
         <div>
-          <div id="tierTitleDisplay" class="tier-title">티어리스트를 선택하거나 새로 생성해줘.</div>
+          <div id="tierTitleDisplay" class="tier-title">Tierlist Select or Create</div>
           <div id="tierMetaDisplay" class="tier-meta"></div>
         </div>
-        <div class="tier-meta info-text">
-          카드 클릭 → 설명 보기 · 드래그앤드롭 → 티어 이동 · 점수는 1.0 ~ 10.0
+        <div class="header-right">
+          <div class="tier-meta info-text">
+            카드 클릭 → 설명 보기 · 드래그앤드롭 → 티어 이동 · 점수는 1.0 ~ 10.0
+          </div>
+          <div style="display:flex; gap:6px; align-items:center; justify-content:flex-end;">
+            <span id="modifyStateLabel" class="tier-meta" style="font-size:0.7rem; opacity:0.75;"></span>
+            <button id="modifyTierlistBtn" class="btn btn-ghost" style="display:none;">MODIFY</button>
+            <button id="deleteTierlistBtn" class="btn btn-danger" style="display:none;">DELETE</button>
+          </div>
         </div>
       </div>
 
-      <section class="waiting-section">
+      <section id="waitingSection" class="waiting-section" style="display:none;">
         <div class="waiting-header">
           <h3>대기리스트</h3>
         </div>
@@ -380,7 +502,7 @@
           <button type="submit" class="btn btn-primary">대기리스트 추가</button>
         </form>
         <div class="info-text">
-          커버 이미지는 업로드 대신 URL로 넣게 만들었어. (예: Spotify/YouTube 썸네일 주소 등)
+          커버 이미지는 업로드 대신 URL로 넣도록 설정함. (예: Spotify/YouTube 썸네일 주소 등)
         </div>
       </section>
 
@@ -390,6 +512,7 @@
     </main>
   </div>
 
+  <!-- 설명 모달 -->
   <div id="modalBackdrop" class="modal-backdrop">
     <div class="modal">
       <div class="modal-header">
@@ -400,55 +523,144 @@
     </div>
   </div>
 
+  <!-- 수정 모드 비밀번호 모달 -->
+  <div id="authBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="authModalTitle">수정 모드 비밀번호 입력</div>
+        <button type="button" class="modal-close" id="authCloseBtn">&times;</button>
+      </div>
+      <form id="authForm" class="modal-body">
+        <div id="authHelpText" style="font-size:0.78rem; margin-bottom:8px; opacity:0.85;">
+          이 티어리스트를 만든 사람이 입력했던 비밀번호를 입력하면 수정 모드로 전환됩니다.
+        </div>
+        <input
+          type="password"
+          id="authPassword"
+          placeholder="비밀번호"
+          style="width:100%; padding:6px 8px; border-radius:999px; border:1px solid rgba(148,163,184,0.8); background:#111827; color:#e5e7eb; font-size:0.8rem; margin-bottom:8px;"
+        />
+        <div style="display:flex; justify-content:flex-end; gap:6px;">
+          <button type="button" class="btn" id="authCancelBtn" style="background:#374151; color:#e5e7eb; padding:6px 10px;">취소</button>
+          <button type="submit" class="btn btn-primary" style="margin-top:0; width:auto;">확인</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     const API_BASE = '';
 
     const tierBoardEl = document.getElementById('tierBoard');
+    const waitingSectionEl = document.getElementById('waitingSection');
     const waitingListEl = document.getElementById('waitingList');
     const tierTitleDisplay = document.getElementById('tierTitleDisplay');
     const tierMetaDisplay = document.getElementById('tierMetaDisplay');
     const tierlistListEl = document.getElementById('tierlistList');
+    const tierlistPaginationEl = document.getElementById('tierlistPagination');
     const createForm = document.getElementById('createForm');
     const addItemForm = document.getElementById('addItemForm');
+
     const modalBackdrop = document.getElementById('modalBackdrop');
     const modalTitle = document.getElementById('modalTitle');
     const modalBody = document.getElementById('modalBody');
     const modalCloseBtn = document.getElementById('modalCloseBtn');
 
+    const deleteTierlistBtn = document.getElementById('deleteTierlistBtn');
+    const modifyTierlistBtn = document.getElementById('modifyTierlistBtn');
+    const modifyStateLabel = document.getElementById('modifyStateLabel');
+
+    const authBackdrop = document.getElementById('authBackdrop');
+    const authForm = document.getElementById('authForm');
+    const authPasswordInput = document.getElementById('authPassword');
+    const authCloseBtn = document.getElementById('authCloseBtn');
+    const authCancelBtn = document.getElementById('authCancelBtn');
+
     let currentTierlistId = null;
-    let localAuth = {
-      name: localStorage.getItem('tierlist_name') || '',
-      password: localStorage.getItem('tierlist_password') || ''
-    };
+    let currentTierType = null;
+    let currentTierOwner = null;
+    let currentTierPassword = null;
+    let hasModifyPermission = false;
+
+    let allTierlists = [];
+    let currentTierPage = 1;
+    const TIERLISTS_PER_PAGE = 10;
 
     function getQueryParam(key) {
       return new URLSearchParams(window.location.search).get(key);
     }
-    function setAuth(name, password) {
-      localAuth = { name, password };
-      localStorage.setItem('tierlist_name', name);
-      localStorage.setItem('tierlist_password', password);
+
+    function updateAddItemFormForType(type) {
+      const artistInput = document.getElementById('itemArtist');
+      const titleInput = document.getElementById('itemTitle');
+      if (type === 'artist') {
+        artistInput.style.display = 'none';
+        artistInput.value = '';
+        titleInput.placeholder = '아티스트 이름 (필수)';
+      } else {
+        artistInput.style.display = '';
+        titleInput.placeholder = '제목 (필수)';
+      }
+    }
+
+    function updateModifyState() {
+      const bodyEl = document.body;
+      bodyEl.classList.toggle('read-only', !hasModifyPermission);
+
+      const hasTier = !!currentTierlistId;
+
+      if (!hasTier) {
+        modifyTierlistBtn.style.display = 'none';
+        deleteTierlistBtn.style.display = 'none';
+      } else if (hasModifyPermission) {
+        modifyTierlistBtn.style.display = 'none';
+        deleteTierlistBtn.style.display = 'inline-flex';
+      } else {
+        modifyTierlistBtn.style.display = 'inline-flex';
+        deleteTierlistBtn.style.display = 'none';
+      }
+
+      if (hasTier && hasModifyPermission) {
+        waitingSectionEl.style.display = 'block';
+      } else {
+        waitingSectionEl.style.display = 'none';
+      }
+
+      const controlsDisabled = !hasTier || !hasModifyPermission;
+      addItemForm.querySelectorAll('input, button').forEach(function (el) {
+        el.disabled = controlsDisabled;
+        el.style.opacity = controlsDisabled ? 0.5 : 1;
+        el.style.cursor = controlsDisabled ? 'not-allowed' : '';
+      });
+
+      modifyStateLabel.textContent = hasTier
+        ? (hasModifyPermission ? '수정 모드 ON' : '읽기 전용 · MODIFY 버튼으로 잠금 해제')
+        : '';
     }
 
     function buildTierColumns() {
       tierBoardEl.innerHTML = '';
-      for (let scoreInt = 10; scoreInt >= 1; scoreInt--) {
-        const col = document.createElement('div');
-        col.className = 'tier-column';
-        col.dataset.tierInt = scoreInt;
 
-        const header = document.createElement('div');
-        header.className = 'tier-column-header';
-        header.innerHTML = `<span>${scoreInt}점대</span><span style="font-size:0.7rem; opacity:0.8;">${scoreInt}.0 ~ ${scoreInt}.9</span>`;
+      const hofSection = document.createElement('section');
+      hofSection.className = 'tier-section';
+      hofSection.innerHTML =
+        '<div class="tier-section-header hof">' +
+          '<div class="tier-section-title">명예의 전당 (10.0)</div>' +
+          '<div class="tier-section-sub">G.O.A.T</div>' +
+        '</div>' +
+        '<div class="tier-dropzone vertical" data-dropzone="tier" data-tier-int="10"></div>';
+      tierBoardEl.appendChild(hofSection);
 
-        const dropzone = document.createElement('div');
-        dropzone.className = 'tier-dropzone';
-        dropzone.dataset.dropzone = 'tier';
-        dropzone.dataset.tierInt = scoreInt;
-
-        col.appendChild(header);
-        col.appendChild(dropzone);
-        tierBoardEl.appendChild(col);
+      for (let scoreInt = 9; scoreInt >= 1; scoreInt--) {
+        const section = document.createElement('section');
+        section.className = 'tier-section';
+        section.innerHTML =
+          '<div class="tier-section-header">' +
+            '<div class="tier-section-title">' + scoreInt + '점대</div>' +
+            '<div class="tier-section-sub">' + scoreInt + '.0 ~ ' + scoreInt + '.9</div>' +
+          '</div>' +
+          '<div class="tier-dropzone vertical" data-dropzone="tier" data-tier-int="' + scoreInt + '"></div>';
+        tierBoardEl.appendChild(section);
       }
     }
 
@@ -478,11 +690,28 @@
 
       const score = document.createElement('div');
       score.className = 'track-score';
-      score.textContent = item.score != null ? item.score.toFixed(1) : '-.-';
+      score.textContent = (item.score != null) ? item.score.toFixed(1) : '-.-';
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'track-delete';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        if (!hasModifyPermission) {
+          alert('수정 모드가 아닙니다. 상단의 MODIFY 버튼을 눌러 비밀번호를 인증하세요.');
+          return;
+        }
+        const ok = confirm('이 카드를 삭제하시겠습니까?');
+        if (!ok) return;
+        card.remove();
+        await updateItem(item.id, { status: 'deleted', score: null });
+      });
 
       card.appendChild(img);
       card.appendChild(meta);
       card.appendChild(score);
+      card.appendChild(delBtn);
 
       if (item.status === 'waiting' || item.score == null) {
         const badge = document.createElement('div');
@@ -491,17 +720,21 @@
         card.appendChild(badge);
       }
 
-      card.addEventListener('click', (e) => {
-        if (e.target.draggable) return;
+      card.addEventListener('click', function (e) {
+        if (e.target.classList.contains('track-delete')) return;
         e.stopPropagation();
         openDescriptionModal(item);
       });
 
-      card.addEventListener('dragstart', (e) => {
+      card.addEventListener('dragstart', function (e) {
+        if (!hasModifyPermission) {
+          e.preventDefault();
+          return;
+        }
         card.classList.add('dragging');
         e.dataTransfer.setData('text/plain', String(item.id));
       });
-      card.addEventListener('dragend', () => {
+      card.addEventListener('dragend', function () {
         card.classList.remove('dragging');
       });
 
@@ -509,29 +742,41 @@
     }
 
     function openDescriptionModal(item) {
-      modalTitle.textContent = `${item.title} – ${item.artist || ''}`.trim();
-      modalBody.textContent = item.description || '설명이 없습니다.';
+      modalTitle.textContent = (item.title || '') + (item.artist ? ' – ' + item.artist : '');
+      modalBody.textContent = item.description || '설명이 등록되어 있지 않습니다.';
       modalBackdrop.style.display = 'flex';
     }
 
-    modalBackdrop.addEventListener('click', (e) => {
+    modalBackdrop.addEventListener('click', function (e) {
       if (e.target === modalBackdrop) modalBackdrop.style.display = 'none';
     });
-    modalCloseBtn.addEventListener('click', () => {
+    modalCloseBtn.addEventListener('click', function () {
       modalBackdrop.style.display = 'none';
     });
 
+    function sortTierZone(dz) {
+      const cards = Array.from(dz.querySelectorAll('.track-card'));
+      cards.sort(function (a, b) {
+        const sa = parseFloat(a.querySelector('.track-score').textContent) || 0;
+        const sb = parseFloat(b.querySelector('.track-score').textContent) || 0;
+        return sb - sa;
+      });
+      cards.forEach(function (c) { dz.appendChild(c); });
+    }
+
     function setupDropzones() {
       const allDropzones = document.querySelectorAll('[data-dropzone]');
-      allDropzones.forEach((dz) => {
-        dz.addEventListener('dragover', (e) => {
+      allDropzones.forEach(function (dz) {
+        dz.addEventListener('dragover', function (e) {
+          if (!hasModifyPermission) return;
           e.preventDefault();
           dz.classList.add('drag-over');
         });
-        dz.addEventListener('dragleave', () => {
+        dz.addEventListener('dragleave', function () {
           dz.classList.remove('drag-over');
         });
-        dz.addEventListener('drop', (e) => {
+        dz.addEventListener('drop', function (e) {
+          if (!hasModifyPermission) return;
           e.preventDefault();
           dz.classList.remove('drag-over');
           const itemId = e.dataTransfer.getData('text/plain');
@@ -543,8 +788,12 @@
 
     async function handleDrop(itemId, dropzone) {
       if (!currentTierlistId) return;
+      if (!hasModifyPermission) {
+        alert('수정 모드가 아닙니다. 상단의 MODIFY 버튼을 눌러 비밀번호를 인증하세요.');
+        return;
+      }
       const isWaiting = dropzone.dataset.dropzone === 'waiting';
-      const card = document.querySelector(`.track-card[data-item-id="${itemId}"]`);
+      const card = document.querySelector('.track-card[data-item-id="' + itemId + '"]');
       if (!card) return;
 
       if (isWaiting) {
@@ -556,12 +805,12 @@
         dropzone.appendChild(card);
 
         const currentScoreText = card.querySelector('.track-score').textContent;
-        let defaultScore = `${tierInt}.0`;
+        let defaultScore = tierInt + '.0';
         if (currentScoreText && currentScoreText !== '-.-') {
           defaultScore = currentScoreText;
         }
 
-        let scoreStr = prompt(`점수 입력 (1.0 ~ 10.0, 소수 첫째자리):`, defaultScore);
+        let scoreStr = prompt('점수를 입력하십시오. (1.0 ~ 10.0, 소수 첫째 자리):', defaultScore);
         if (scoreStr == null) return;
 
         scoreStr = scoreStr.trim().replace(',', '.');
@@ -576,88 +825,251 @@
         if (badge) badge.remove();
 
         await updateItem(itemId, { status: 'placed', score: scoreNum });
+        sortTierZone(dropzone);
       }
     }
 
-    async function updateItem(id, { status, score, description }) {
-      if (!localAuth.name || !localAuth.password) {
-        alert('수정 권한이 없습니다. 좌측에서 이름/비밀번호를 먼저 입력해주세요.');
+    async function updateItem(id, params) {
+      if (!hasModifyPermission || !currentTierOwner || !currentTierPassword) {
+        alert('수정 모드가 아닙니다. 상단의 MODIFY 버튼을 눌러 비밀번호를 인증하세요.');
         return;
       }
       const body = {
-        name: localAuth.name,
-        password: localAuth.password
+        name: currentTierOwner,
+        password: currentTierPassword
       };
-      if (typeof status === 'string') body.status = status;
-      if (typeof score === 'number' || score === null) body.score = score;
-      if (typeof description === 'string') body.description = description;
+      if (typeof params.status === 'string') body.status = params.status;
+      if (typeof params.score === 'number' || params.score === null) body.score = params.score;
+      if (typeof params.description === 'string') body.description = params.description;
 
-      const res = await fetch(`${API_BASE}/api/items/${id}`, {
+      const res = await fetch(API_BASE + '/api/items/' + id, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
       if (!res.ok) {
-        alert('수정에 실패했습니다. (이름/비밀번호가 맞는지 확인해줘)');
+        alert('수정에 실패했습니다. 서버 상태 코드를 확인하세요.');
       }
     }
 
-    async function loadTierlistList() {
-      const res = await fetch(`${API_BASE}/api/tierlists`);
-      if (!res.ok) return;
-      const data = await res.json();
+    // 수정 모드에서만 호출되는 삭제 함수 (DELETE 요청에 비밀번호 안 보냄)
+    async function deleteTierlistInModifyMode() {
+      if (!hasModifyPermission || !currentTierlistId) {
+        alert('삭제 권한이 없습니다. 상단의 MODIFY 버튼으로 먼저 수정 모드에 진입하세요.');
+        return;
+      }
+
+      const ok = confirm('현재 티어리스트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.');
+      if (!ok) return;
+
+      try {
+        const res = await fetch(API_BASE + '/api/tierlists/' + encodeURIComponent(currentTierlistId), {
+          method: 'DELETE'
+        });
+        if (!res.ok) {
+          alert('티어리스트 삭제에 실패했습니다. 서버 로그를 확인하세요.');
+          return;
+        }
+      } catch (err) {
+        alert('서버 통신 중 오류가 발생했습니다.');
+        return;
+      }
+
+      currentTierlistId = null;
+      currentTierType = null;
+      currentTierOwner = null;
+      currentTierPassword = null;
+      hasModifyPermission = false;
+
+      tierTitleDisplay.textContent = 'Tierlist Select or Create';
+      tierMetaDisplay.textContent = '';
+      waitingListEl.innerHTML = '';
+      document.querySelectorAll('.tier-dropzone').forEach(function (dz) { dz.innerHTML = ''; });
+      updateModifyState();
+      updateAddItemFormForType(null);
+      await loadTierlistList();
+    }
+
+    function openAuthModal() {
+      if (!currentTierlistId || !currentTierOwner) {
+        alert('먼저 티어리스트를 선택하십시오.');
+        return;
+      }
+      authPasswordInput.value = '';
+      authBackdrop.style.display = 'flex';
+      authPasswordInput.focus();
+    }
+
+    modifyTierlistBtn.addEventListener('click', openAuthModal);
+
+    // 수정 모드가 아니면 경고, 수정 모드면 confirm만 띄우고 바로 삭제
+    deleteTierlistBtn.addEventListener('click', function () {
+      if (!hasModifyPermission) {
+        alert('수정 모드가 아닙니다. 상단의 MODIFY 버튼으로 먼저 비밀번호를 인증하세요.');
+        return;
+      }
+      deleteTierlistInModifyMode();
+    });
+
+    authCloseBtn.addEventListener('click', function () {
+      authBackdrop.style.display = 'none';
+    });
+    authCancelBtn.addEventListener('click', function () {
+      authBackdrop.style.display = 'none';
+    });
+    authBackdrop.addEventListener('click', function (e) {
+      if (e.target === authBackdrop) {
+        authBackdrop.style.display = 'none';
+      }
+    });
+
+    // *** 여기 수정: 비밀번호를 서버에 검증 요청 보내고, 성공했을 때만 수정 모드로 전환 ***
+    authForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const pw = authPasswordInput.value.trim();
+      if (!pw) return;
+
+      if (!currentTierlistId || !currentTierOwner) {
+        alert('먼저 티어리스트를 선택하십시오.');
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          API_BASE + '/api/tierlists/' + encodeURIComponent(currentTierlistId) + '/auth',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: currentTierOwner, password: pw })
+          }
+        );
+
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            alert('비밀번호가 일치하지 않습니다.');
+          } else if (res.status === 404) {
+            alert('티어리스트를 찾을 수 없습니다.');
+          } else {
+            alert('인증 중 오류가 발생했습니다.');
+          }
+          // 비번 틀린 경우에는 수정모드로 전환하지 않고 그대로 읽기 모드 유지
+          return;
+        }
+      } catch (err) {
+        alert('서버 통신 중 오류가 발생했습니다.');
+        return;
+      }
+
+      // 여기까지 왔으면 비밀번호 검증 성공 → 수정 모드 ON
+      currentTierPassword = pw;
+      hasModifyPermission = true;
+      updateModifyState();
+      authBackdrop.style.display = 'none';
+    });
+
+    function renderTierlistPage() {
       tierlistListEl.innerHTML = '';
-      data.forEach((tl) => {
+      tierlistPaginationEl.innerHTML = '';
+      if (!allTierlists || allTierlists.length === 0) return;
+
+      const totalPages = Math.ceil(allTierlists.length / TIERLISTS_PER_PAGE);
+      if (currentTierPage > totalPages) currentTierPage = totalPages;
+
+      const start = (currentTierPage - 1) * TIERLISTS_PER_PAGE;
+      const slice = allTierlists.slice(start, start + TIERLISTS_PER_PAGE);
+
+      slice.forEach(function (tl) {
         const div = document.createElement('div');
         div.className = 'tierlist-item';
-        div.innerHTML = `
-          <div>
-            <div>${tl.title}</div>
-            <div style="font-size:0.7rem; opacity:0.75;">by ${tl.owner}</div>
-          </div>
-          <span class="type">${tl.type}</span>
-        `;
-        div.addEventListener('click', () => {
+        div.innerHTML =
+          '<div>' +
+            '<div>' + tl.title + '</div>' +
+            '<div style="font-size:0.7rem; opacity:0.75;">by ' + tl.owner + '</div>' +
+          '</div>' +
+          '<span class="type">' + tl.type + '</span>';
+        div.addEventListener('click', function () {
           const url = new URL(window.location.href);
           url.searchParams.set('id', tl.id);
           window.location.href = url.toString();
         });
         tierlistListEl.appendChild(div);
       });
+
+      if (totalPages > 1) {
+        for (let p = 1; p <= totalPages; p++) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'page-btn' + (p === currentTierPage ? ' active' : '');
+          btn.textContent = String(p);
+          btn.addEventListener('click', function () {
+            currentTierPage = p;
+            renderTierlistPage();
+          });
+          tierlistPaginationEl.appendChild(btn);
+        }
+      }
     }
 
-    async function loadTierlist(id) {
-      const res = await fetch(`${API_BASE}/api/tierlists/${id}`);
+    async function loadTierlistList() {
+      const res = await fetch(API_BASE + '/api/tierlists');
+      if (!res.ok) return;
+      allTierlists = await res.json();
+      currentTierPage = 1;
+      renderTierlistPage();
+    }
+
+    // preserveMode: true면 현재 수정 모드/비번 유지, false면 읽기모드로 초기화
+    async function loadTierlist(id, preserveMode) {
+      const res = await fetch(API_BASE + '/api/tierlists/' + id);
       if (!res.ok) {
-        tierTitleDisplay.textContent = '티어리스트를 불러오지 못했습니다.';
+        tierTitleDisplay.textContent = 'Tierlist Select or Create';
         tierMetaDisplay.textContent = '';
+        currentTierlistId = null;
+        currentTierType = null;
+        currentTierOwner = null;
+        currentTierPassword = null;
+        hasModifyPermission = false;
+        updateAddItemFormForType(null);
+        updateModifyState();
         return;
       }
       const data = await res.json();
       currentTierlistId = data.tierlist.id;
+      currentTierType = data.tierlist.type;
+      currentTierOwner = data.tierlist.owner || '';
+
+      if (!preserveMode) {
+        currentTierPassword = null;
+        hasModifyPermission = false;
+      }
+      updateAddItemFormForType(currentTierType);
+      updateModifyState();
 
       tierTitleDisplay.textContent = data.tierlist.title;
-      tierMetaDisplay.textContent = `타입: ${data.tierlist.type} · by ${data.tierlist.owner}`;
+      tierMetaDisplay.textContent = '타입: ' + data.tierlist.type + ' · by ' + data.tierlist.owner;
 
       waitingListEl.innerHTML = '';
-      document.querySelectorAll('.tier-dropzone').forEach(dz => dz.innerHTML = '');
+      document.querySelectorAll('.tier-dropzone').forEach(function (dz) { dz.innerHTML = ''; });
 
-      data.items.forEach((item) => {
+      data.items.forEach(function (item) {
+        if (item.status === 'deleted') return;
         const card = createTrackCard(item);
         if (item.status === 'waiting' || item.score == null) {
           waitingListEl.appendChild(card);
         } else {
           const intPart = Math.floor(item.score);
-          const dz = document.querySelector(`.tier-dropzone[data-tier-int="${intPart}"]`);
+          let dz = document.querySelector('.tier-dropzone[data-tier-int="' + intPart + '"]');
+          if (!dz) dz = document.querySelector('.tier-dropzone[data-tier-int="10"]');
           if (dz) dz.appendChild(card);
           else waitingListEl.appendChild(card);
         }
       });
 
+      document.querySelectorAll('.tier-dropzone[data-dropzone="tier"]').forEach(sortTierZone);
       setupDropzones();
     }
 
-    createForm.addEventListener('submit', async (e) => {
+    createForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       const name = document.getElementById('creatorName').value.trim();
       const password = document.getElementById('creatorPassword').value.trim();
@@ -666,81 +1078,101 @@
 
       if (!name || !password || !title) return;
 
-      const res = await fetch(`${API_BASE}/api/tierlists`, {
+      const res = await fetch(API_BASE + '/api/tierlists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, password, type, title })
+        body: JSON.stringify({ name: name, password: password, type: type, title: title })
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert('생성 실패: ' + (data.error || '알 수 없는 오류'));
+        alert('생성에 실패했습니다. 입력 값을 확인하십시오.');
         return;
       }
       const out = await res.json();
-      setAuth(name, password);
+
+      localStorage.setItem('tier_creator_name', name);
+      localStorage.setItem('tier_creator_password', password);
 
       const url = new URL(window.location.href);
       url.searchParams.set('id', out.id);
       window.location.href = url.toString();
     });
 
-    addItemForm.addEventListener('submit', async (e) => {
+    addItemForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       if (!currentTierlistId) {
-        alert('먼저 티어리스트를 선택하거나 생성해줘.');
+        alert('먼저 티어리스트를 선택하거나 생성하십시오.');
         return;
       }
-      const name = localAuth.name || document.getElementById('creatorName').value.trim();
-      const password = localAuth.password || document.getElementById('creatorPassword').value.trim();
-      const artist = document.getElementById('itemArtist').value.trim();
-      const title = document.getElementById('itemTitle').value.trim();
+      if (!hasModifyPermission || !currentTierOwner || !currentTierPassword) {
+        alert('수정 모드가 아닙니다. 상단의 MODIFY 버튼을 눌러 비밀번호를 인증하세요.');
+        return;
+      }
+
+      const artistInput = document.getElementById('itemArtist');
+      const titleInput = document.getElementById('itemTitle');
       const imageUrl = document.getElementById('itemImageUrl').value.trim();
       const description = document.getElementById('itemDesc').value.trim();
 
-      if (!name || !password) {
-        alert('수정 권한을 위해 이름/비밀번호가 필요해.');
-        return;
+      let artist = artistInput.value.trim();
+      let title = titleInput.value.trim();
+
+      if (currentTierType === 'artist') {
+        artist = '';
+        if (!title) {
+          alert('아티스트 이름을 입력하십시오.');
+          return;
+        }
+      } else {
+        if (!title) return;
       }
-      if (!title) return;
 
-      setAuth(name, password);
-
-      const res = await fetch(`${API_BASE}/api/tierlists/${currentTierlistId}/items`, {
+      const res = await fetch(API_BASE + '/api/tierlists/' + currentTierlistId + '/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name,
-          password,
-          artist,
-          title,
-          imageUrl,
-          description
+          name: currentTierOwner,
+          password: currentTierPassword,
+          artist: artist,
+          title: title,
+          imageUrl: imageUrl,
+          description: description
         })
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert('추가 실패: ' + (data.error || '알 수 없는 오류'));
+        alert('추가에 실패했습니다. 서버 상태 코드를 확인하세요.');
         return;
       }
 
-      document.getElementById('itemArtist').value = '';
-      document.getElementById('itemTitle').value = '';
+      artistInput.value = '';
+      titleInput.value = '';
       document.getElementById('itemImageUrl').value = '';
       document.getElementById('itemDesc').value = '';
-      await loadTierlist(currentTierlistId);
+
+      await loadTierlist(currentTierlistId, true);
     });
 
     (async function init() {
       buildTierColumns();
+      updateModifyState();
       await loadTierlistList();
 
       const id = getQueryParam('id');
       if (id) {
-        await loadTierlist(id);
+        await loadTierlist(id, false);
+      } else {
+        currentTierlistId = null;
+        currentTierType = null;
+        currentTierOwner = null;
+        currentTierPassword = null;
+        hasModifyPermission = false;
+        updateAddItemFormForType(null);
+        updateModifyState();
       }
 
-      if (localAuth.name) document.getElementById('creatorName').value = localAuth.name;
-      if (localAuth.password) document.getElementById('creatorPassword').value = localAuth.password;
+      const savedCreatorName = localStorage.getItem('tier_creator_name');
+      const savedCreatorPw = localStorage.getItem('tier_creator_password');
+      if (savedCreatorName) document.getElementById('creatorName').value = savedCreatorName;
+      if (savedCreatorPw) document.getElementById('creatorPassword').value = savedCreatorPw;
     })();
   </script>
 </body>

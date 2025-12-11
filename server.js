@@ -167,6 +167,68 @@ app.get('/api/tierlists/:id', (req, res) => {
   );
 });
 
+app.post('/api/tierlists/:id/auth', (req, res) => {
+  const id = req.params.id;
+  const { name, password } = req.body;
+
+  if (!name || !password) {
+    return res.status(400).json({ error: 'missing auth' });
+  }
+
+  assertOwner(id, name, password, (err) => {
+    if (err) {
+      if (err.message === 'FORBIDDEN') return res.status(403).json({ error: 'forbidden' });
+      if (err.message === 'NO_TIERLIST') return res.status(404).json({ error: 'not found' });
+      console.error(err);
+      return res.status(500).json({ error: 'server error' });
+    }
+    return res.json({ ok: true });
+  });
+});
+
+
+/**
+ * 새로 추가한 부분: 티어리스트 삭제 라우트
+ * 프론트에서 DELETE /api/tierlists/:id 로 호출하면 여기서 DB에서 지움
+ */
+app.delete('/api/tierlists/:id', (req, res) => {
+  const id = req.params.id;
+
+  db.serialize(() => {
+    // 먼저 이 티어리스트에 달린 아이템들 삭제
+    db.run(
+      `DELETE FROM items WHERE tierlist_id = ?`,
+      [id],
+      function (err) {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({ error: 'server error' });
+        }
+
+        // 그 다음 티어리스트 자체 삭제
+        db.run(
+          `DELETE FROM tierlists WHERE id = ?`,
+          [id],
+          function (err2) {
+            if (err2) {
+              console.error(err2);
+              return res.status(500).json({ error: 'server error' });
+            }
+
+            // 삭제된 행이 없으면 존재하지 않는 id
+            if (this.changes === 0) {
+              return res.status(404).json({ error: 'not found' });
+            }
+
+            // 정상 삭제
+            return res.sendStatus(204);
+          }
+        );
+      }
+    );
+  });
+});
+
 app.post('/api/tierlists/:id/items', (req, res) => {
   const tierlistId = req.params.id;
   const { name, password, artist, title, imageUrl, description } = req.body;
