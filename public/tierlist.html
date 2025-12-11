@@ -162,6 +162,22 @@
     }
     .tierlist-item:hover { background: #282828; }
 
+    .public-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .sort-select {
+      font-size: 0.75rem;
+      padding: 3px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      background: #111827;
+      color: #e5e7eb;
+    }
+
     .pagination {
       margin-top: 6px;
       display: flex;
@@ -232,6 +248,7 @@
     }
     .waiting-list {
       min-height: 80px;
+      max-height: 220px;
       padding: 8px;
       display: flex;
       flex-wrap: wrap;
@@ -239,6 +256,7 @@
       border-radius: 12px;
       background: #181818;
       border: 1px dashed rgba(148, 163, 184, 0.6);
+      overflow-y: auto;
     }
 
     .add-item-form {
@@ -401,6 +419,19 @@
       display: flex;
     }
 
+    .edit-score-btn {
+      position: absolute;
+      bottom: 4px;
+      right: 4px;
+      font-size: 0.65rem;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: none;
+      background: rgba(15,23,42,0.9);
+      color: #e5e7eb;
+      cursor: pointer;
+    }
+
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -414,7 +445,8 @@
       background: #181818;
       border-radius: 20px;
       padding: 16px;
-      width: 320px;
+      width: 340px;
+      max-width: calc(100% - 40px);
       border: 1px solid rgba(148, 163, 184, 0.7);
       box-shadow: 0 25px 50px rgba(0, 0, 0, 0.85);
     }
@@ -440,11 +472,56 @@
       cursor: pointer;
       font-size: 1rem;
     }
+    .modal-textarea {
+      width: 100%;
+      min-height: 80px;
+      margin-top: 6px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.8);
+      background: #111827;
+      color: #e5e7eb;
+      font-size: 0.8rem;
+      resize: vertical;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .like-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+    }
+    .like-heart {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: #f472b6;
+      font-size: 14px;
+    }
+    .like-heart.filled {
+      color: #ec4899;
+    }
 
     @media (max-width: 900px) {
       .app-shell { grid-template-columns: 1fr; }
     }
   </style>
+
+  <!-- HTML5 drag & drop 폴리필 (모바일 지원용) [web:432][web:438] -->
+  <script src="https://cdn.jsdelivr.net/npm/drag-drop-touch@1.3.0/DragDropTouch.js"></script>
 </head>
 <body class="read-only">
   <div class="app-shell">
@@ -475,6 +552,13 @@
         <div id="myTierlistList" class="tierlist-list"></div>
 
         <div class="section-title">공개 TierList</div>
+        <div class="public-header-row">
+          <span style="font-size:0.75rem; opacity:0.8;">정렬 기준</span>
+          <select id="publicSortSelect" class="sort-select">
+            <option value="created">등록 날짜 순</option>
+            <option value="likes">좋아요 순</option>
+          </select>
+        </div>
         <div id="publicTierlistList" class="tierlist-list"></div>
         <div id="publicTierlistPagination" class="pagination"></div>
 
@@ -497,7 +581,7 @@
         </div>
         <div class="header-right">
           <div class="tier-meta info-text">
-            카드 클릭 → 설명 보기 · 드래그앤드롭 → 티어 이동 · 점수는 1.0 ~ 10.0
+            카드 클릭 → 설명 보기/수정 · 드래그앤드롭 → 티어 이동 · 점수는 1.0 ~ 10.0
           </div>
           <div style="display:flex; gap:6px; align-items:center; justify-content:flex-end;">
             <span id="modifyStateLabel" class="tier-meta" style="font-size:0.7rem; opacity:0.75;"></span>
@@ -542,7 +626,14 @@
         <div class="modal-title" id="modalTitle"></div>
         <button class="modal-close" id="modalCloseBtn">&times;</button>
       </div>
-      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-body">
+        <div id="modalDescRead"></div>
+        <textarea id="modalDescEdit" class="modal-textarea" style="display:none;"></textarea>
+        <div class="modal-footer" id="modalFooter" style="display:none;">
+          <button type="button" class="btn" id="modalCancelEditBtn" style="background:#374151; color:#e5e7eb; padding:6px 10px;">취소</button>
+          <button type="button" class="btn btn-primary" id="modalSaveDescBtn" style="margin-top:0; width:auto;">저장</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -598,6 +689,7 @@
   <script>
     const API_BASE = '';
 
+    // ---- DOM 참조 ----
     const tierBoardEl = document.getElementById('tierBoard');
     const waitingSectionEl = document.getElementById('waitingSection');
     const waitingListEl = document.getElementById('waitingList');
@@ -607,6 +699,7 @@
     const myTierlistListEl = document.getElementById('myTierlistList');
     const publicTierlistListEl = document.getElementById('publicTierlistList');
     const publicTierlistPaginationEl = document.getElementById('publicTierlistPagination');
+    const publicSortSelect = document.getElementById('publicSortSelect');
     const adminSectionEl = document.getElementById('adminSection');
     const adminTierlistListEl = document.getElementById('adminTierlistList');
     const adminLoginArea = document.getElementById('adminLoginArea');
@@ -622,8 +715,12 @@
 
     const modalBackdrop = document.getElementById('modalBackdrop');
     const modalTitle = document.getElementById('modalTitle');
-    const modalBody = document.getElementById('modalBody');
+    const modalDescRead = document.getElementById('modalDescRead');
+    const modalDescEdit = document.getElementById('modalDescEdit');
+    const modalFooter = document.getElementById('modalFooter');
     const modalCloseBtn = document.getElementById('modalCloseBtn');
+    const modalSaveDescBtn = document.getElementById('modalSaveDescBtn');
+    const modalCancelEditBtn = document.getElementById('modalCancelEditBtn');
 
     const authBackdrop = document.getElementById('authBackdrop');
     const authForm = document.getElementById('authForm');
@@ -637,6 +734,7 @@
     const adminCloseBtn = document.getElementById('adminCloseBtn');
     const adminCancelBtn = document.getElementById('adminCancelBtn');
 
+    // ---- 상태 ----
     let currentTierlistId = null;
     let currentTierType = null;
     let currentTierOwner = null;
@@ -653,8 +751,22 @@
     let currentPublicPage = 1;
     const PUBLIC_PER_PAGE = 10;
 
+    let currentModalItem = null;
+
+    const clientKey = getOrCreateClientKey();
+
+    // ---- 유틸 ----
     function getQueryParam(key) {
       return new URLSearchParams(window.location.search).get(key);
+    }
+
+    function getOrCreateClientKey() {
+      let key = localStorage.getItem('tier_client_key');
+      if (!key) {
+        key = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem('tier_client_key', key);
+      }
+      return key;
     }
 
     function updateAddItemFormForType(type) {
@@ -734,6 +846,7 @@
       }
     }
 
+    // ---- 카드 생성 ----
     function createTrackCard(item) {
       const card = document.createElement('div');
       card.className = 'track-card';
@@ -754,7 +867,6 @@
       const a = document.createElement('div');
       a.className = 'track-artist';
       a.textContent = item.artist || '';
-
       meta.appendChild(t);
       meta.appendChild(a);
 
@@ -778,10 +890,36 @@
         await updateItem(item.id, { status: 'deleted', score: null });
       });
 
+      const editScoreBtn = document.createElement('button');
+      editScoreBtn.type = 'button';
+      editScoreBtn.className = 'edit-score-btn';
+      editScoreBtn.textContent = '점수';
+      editScoreBtn.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        if (!hasModifyPermission) {
+          alert('수정 모드가 아닙니다. 상단의 MODIFY 버튼을 눌러 비밀번호를 인증하세요.');
+          return;
+        }
+        let defaultScore = item.score != null ? item.score.toFixed(1) : '7.0';
+        let scoreStr = prompt('점수를 입력하십시오. (1.0 ~ 10.0, 소수 첫째 자리):', defaultScore);
+        if (scoreStr == null) return;
+        scoreStr = scoreStr.trim().replace(',', '.');
+        let scoreNum = parseFloat(scoreStr);
+        if (isNaN(scoreNum)) scoreNum = parseFloat(defaultScore);
+        if (scoreNum < 1.0) scoreNum = 1.0;
+        if (scoreNum > 10.0) scoreNum = 10.0;
+        scoreNum = Math.round(scoreNum * 10) / 10;
+
+        score.textContent = scoreNum.toFixed(1);
+        item.score = scoreNum;
+        await updateItem(item.id, { score: scoreNum });
+      });
+
       card.appendChild(img);
       card.appendChild(meta);
       card.appendChild(score);
       card.appendChild(delBtn);
+      card.appendChild(editScoreBtn);
 
       if (item.status === 'waiting' || item.score == null) {
         const badge = document.createElement('div');
@@ -790,18 +928,24 @@
         card.appendChild(badge);
       }
 
+      // 카드 클릭 → 설명 모달 (수정 모드면 편집 가능)
       card.addEventListener('click', function (e) {
-        if (e.target.classList.contains('track-delete')) return;
+        if (
+          e.target.classList.contains('track-delete') ||
+          e.target.classList.contains('edit-score-btn')
+        ) return;
         e.stopPropagation();
         openDescriptionModal(item);
       });
 
+      // 드래그
       card.addEventListener('dragstart', function (e) {
         if (!hasModifyPermission) {
           e.preventDefault();
           return;
         }
         card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', String(item.id));
       });
       card.addEventListener('dragend', function () {
@@ -811,9 +955,22 @@
       return card;
     }
 
+    // ---- 설명 모달 ----
     function openDescriptionModal(item) {
+      currentModalItem = item;
       modalTitle.textContent = (item.title || '') + (item.artist ? ' – ' + item.artist : '');
-      modalBody.textContent = item.description || '설명이 등록되어 있지 않습니다.';
+
+      if (hasModifyPermission) {
+        modalDescRead.style.display = 'none';
+        modalDescEdit.style.display = 'block';
+        modalFooter.style.display = 'flex';
+        modalDescEdit.value = item.description || '';
+      } else {
+        modalDescRead.style.display = 'block';
+        modalDescEdit.style.display = 'none';
+        modalFooter.style.display = 'none';
+        modalDescRead.textContent = item.description || '설명이 등록되어 있지 않습니다.';
+      }
       modalBackdrop.style.display = 'flex';
     }
 
@@ -824,6 +981,22 @@
       modalBackdrop.style.display = 'none';
     });
 
+    modalCancelEditBtn.addEventListener('click', function () {
+      modalBackdrop.style.display = 'none';
+    });
+
+    modalSaveDescBtn.addEventListener('click', async function () {
+      if (!hasModifyPermission || !currentModalItem) {
+        modalBackdrop.style.display = 'none';
+        return;
+      }
+      const newDesc = modalDescEdit.value.trim();
+      currentModalItem.description = newDesc;
+      await updateItem(currentModalItem.id, { description: newDesc });
+      modalBackdrop.style.display = 'none';
+    });
+
+    // ---- 티어 섹션 정렬 ----
     function sortTierZone(dz) {
       const cards = Array.from(dz.querySelectorAll('.track-card'));
       cards.sort(function (a, b) {
@@ -834,6 +1007,21 @@
       cards.forEach(function (c) { dz.appendChild(c); });
     }
 
+    // ---- 드롭존 & 오토 스크롤 ----
+    let autoScrollInterval = null;
+    function startAutoScroll(direction) {
+      stopAutoScroll();
+      autoScrollInterval = setInterval(function () {
+        window.scrollBy(0, direction * 10);
+      }, 30);
+    }
+    function stopAutoScroll() {
+      if (autoScrollInterval) {
+        clearInterval(autoScrollInterval);
+        autoScrollInterval = null;
+      }
+    }
+
     function setupDropzones() {
       const allDropzones = document.querySelectorAll('[data-dropzone]');
       allDropzones.forEach(function (dz) {
@@ -841,18 +1029,34 @@
           if (!hasModifyPermission) return;
           e.preventDefault();
           dz.classList.add('drag-over');
+
+          const rect = dz.getBoundingClientRect();
+          const threshold = 40;
+          if (e.clientY < rect.top + threshold) {
+            startAutoScroll(-1);
+          } else if (e.clientY > rect.bottom - threshold) {
+            startAutoScroll(1);
+          } else {
+            stopAutoScroll();
+          }
         });
         dz.addEventListener('dragleave', function () {
           dz.classList.remove('drag-over');
+          stopAutoScroll();
         });
         dz.addEventListener('drop', function (e) {
           if (!hasModifyPermission) return;
           e.preventDefault();
           dz.classList.remove('drag-over');
+          stopAutoScroll();
           const itemId = e.dataTransfer.getData('text/plain');
           if (!itemId) return;
           handleDrop(parseInt(itemId, 10), dz);
         });
+      });
+
+      document.addEventListener('dragend', function () {
+        stopAutoScroll();
       });
     }
 
@@ -866,31 +1070,41 @@
       const card = document.querySelector('.track-card[data-item-id="' + itemId + '"]');
       if (!card) return;
 
+      const scoreElement = card.querySelector('.track-score');
+      const currentScoreText = scoreElement.textContent;
+      const existingScore = parseFloat(currentScoreText);
+
       if (isWaiting) {
         waitingListEl.appendChild(card);
         await updateItem(itemId, { status: 'waiting', score: null });
+        const badge = card.querySelector('.badge-waiting');
+        if (!badge) {
+          const newBadge = document.createElement('div');
+          newBadge.className = 'badge-waiting';
+          newBadge.textContent = 'WAIT';
+          card.appendChild(newBadge);
+        }
       } else {
         const tierInt = parseInt(dropzone.dataset.tierInt, 10);
         if (!tierInt) return;
         dropzone.appendChild(card);
 
-        const currentScoreText = card.querySelector('.track-score').textContent;
-        let defaultScore = tierInt + '.0';
-        if (currentScoreText && currentScoreText !== '-.-') {
-          defaultScore = currentScoreText;
+        let scoreNum;
+        if (!isNaN(existingScore)) {
+          scoreNum = existingScore;
+        } else {
+          let defaultScore = tierInt + '.0';
+          let scoreStr = prompt('점수를 입력하십시오. (1.0 ~ 10.0, 소수 첫째 자리):', defaultScore);
+          if (scoreStr == null) return;
+          scoreStr = scoreStr.trim().replace(',', '.');
+          scoreNum = parseFloat(scoreStr);
+          if (isNaN(scoreNum)) scoreNum = parseFloat(defaultScore);
+          if (scoreNum < 1.0) scoreNum = 1.0;
+          if (scoreNum > 10.0) scoreNum = 10.0;
+          scoreNum = Math.round(scoreNum * 10) / 10;
         }
 
-        let scoreStr = prompt('점수를 입력하십시오. (1.0 ~ 10.0, 소수 첫째 자리):', defaultScore);
-        if (scoreStr == null) return;
-
-        scoreStr = scoreStr.trim().replace(',', '.');
-        let scoreNum = parseFloat(scoreStr);
-        if (isNaN(scoreNum)) scoreNum = parseFloat(defaultScore);
-        if (scoreNum < 1.0) scoreNum = 1.0;
-        if (scoreNum > 10.0) scoreNum = 10.0;
-        scoreNum = Math.round(scoreNum * 10) / 10;
-
-        card.querySelector('.track-score').textContent = scoreNum.toFixed(1);
+        scoreElement.textContent = scoreNum.toFixed(1);
         const badge = card.querySelector('.badge-waiting');
         if (badge) badge.remove();
 
@@ -984,7 +1198,7 @@
       deleteTierlistInModifyMode();
     });
 
-    // 제목 수정 버튼
+    // 제목 수정
     renameTierlistBtn.addEventListener('click', async function () {
       if (!hasModifyPermission || !currentTierlistId || !currentTierOwner || !currentTierPassword) {
         alert('먼저 수정 모드로 전환하십시오.');
@@ -1032,7 +1246,7 @@
       }
     });
 
-    // MODIFY 비밀번호 인증 (소유자 비번 또는 관리자 비번)
+    // MODIFY 비밀번호 인증
     authForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       const pw = authPasswordInput.value.trim();
@@ -1064,7 +1278,7 @@
           return;
         }
 
-        const data = await res.json();
+        await res.json(); // admin 플래그는 현재 로직에선 따로 안 씀
         currentTierPassword = pw;
         hasModifyPermission = true;
         updateModifyState();
@@ -1131,6 +1345,7 @@
       };
     }
 
+    // ---- 공개 티어리스트 렌더 (좋아요 포함) ----
     function renderPublicTierlists() {
       publicTierlistListEl.innerHTML = '';
       publicTierlistPaginationEl.innerHTML = '';
@@ -1145,14 +1360,54 @@
       slice.forEach(function (tl) {
         const div = document.createElement('div');
         div.className = 'tierlist-item';
-        div.innerHTML =
-          '<div>' +
-            '<div>' + tl.title + '</div>' +
-            '<div style="font-size:0.7rem; opacity:0.75;">by ' + tl.owner + '</div>' +
-          '</div>' +
-          '<span class="type">' + tl.type + '</span>';
-        div.addEventListener('click', makeTierlistClickHandler(tl.id));
+
+        const left = document.createElement('div');
+        left.innerHTML =
+          '<div>' + tl.title + '</div>' +
+          '<div style="font-size:0.7rem; opacity:0.75;">by ' + tl.owner + '</div>';
+
+        const right = document.createElement('div');
+        right.style.display = 'flex';
+        right.style.flexDirection = 'column';
+        right.style.alignItems = 'flex-end';
+        right.style.gap = '2px';
+
+        const typeSpan = document.createElement('span');
+        typeSpan.className = 'type';
+        typeSpan.textContent = tl.type;
+        right.appendChild(typeSpan);
+
+        const likeRow = document.createElement('div');
+        likeRow.className = 'like-row';
+
+        const heartBtn = document.createElement('button');
+        heartBtn.type = 'button';
+        heartBtn.className = 'like-heart';
+        heartBtn.innerHTML = '❤';
+
+        const likeCountSpan = document.createElement('span');
+        likeCountSpan.textContent = (tl.like_count || 0) + '';
+
+        likeRow.appendChild(heartBtn);
+        likeRow.appendChild(likeCountSpan);
+        right.appendChild(likeRow);
+
+        div.appendChild(left);
+        div.appendChild(right);
+
+        div.addEventListener('click', function (e) {
+          if (e.target === heartBtn) return;
+          makeTierlistClickHandler(tl.id)();
+        });
+
+        heartBtn.addEventListener('click', async function (e) {
+          e.stopPropagation();
+          await toggleLike(tl.id, heartBtn, likeCountSpan);
+        });
+
         publicTierlistListEl.appendChild(div);
+
+        initLikeState(tl.id, heartBtn, likeCountSpan);
       });
 
       if (totalPages > 1) {
@@ -1209,6 +1464,12 @@
         typeSpan.textContent = tl.type + (tl.isPublic ? ' · 공개중' : '');
         right.appendChild(typeSpan);
 
+        const likeSpan = document.createElement('span');
+        likeSpan.style.fontSize = '0.7rem';
+        likeSpan.style.opacity = 0.8;
+        likeSpan.textContent = '♥ ' + (tl.like_count || 0);
+        right.appendChild(likeSpan);
+
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn-primary';
@@ -1242,8 +1503,51 @@
       });
     }
 
+    // ---- 좋아요 API 연동 ----
+    async function initLikeState(tierlistId, heartBtn, likeCountSpan) {
+      try {
+        const res = await fetch(API_BASE + '/api/tierlists/' + tierlistId + '/is-liked', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientKey })
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        likeCountSpan.textContent = data.likeCount || 0;
+        if (data.liked) {
+          heartBtn.classList.add('filled');
+        } else {
+          heartBtn.classList.remove('filled');
+        }
+      } catch (e) {
+        // 무시
+      }
+    }
+
+    async function toggleLike(tierlistId, heartBtn, likeCountSpan) {
+      try {
+        const res = await fetch(API_BASE + '/api/tierlists/' + tierlistId + '/like', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientKey })
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        likeCountSpan.textContent = data.likeCount || 0;
+        if (data.liked) {
+          heartBtn.classList.add('filled');
+        } else {
+          heartBtn.classList.remove('filled');
+        }
+      } catch (e) {
+        // 무시
+      }
+    }
+
+    // ---- 목록 로딩 ----
     async function loadPublicTierlists() {
-      const res = await fetch(API_BASE + '/api/tierlists');
+      const sort = publicSortSelect.value || 'created';
+      const res = await fetch(API_BASE + '/api/tierlists?sort=' + encodeURIComponent(sort));
       if (!res.ok) return;
       publicTierlists = await res.json();
       currentPublicPage = 1;
@@ -1368,6 +1672,7 @@
       setupDropzones();
     }
 
+    // ---- 폼 핸들러 ----
     createForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       const name = document.getElementById('creatorName').value.trim();
@@ -1452,6 +1757,11 @@
       await loadTierlist(currentTierlistId, true);
     });
 
+    publicSortSelect.addEventListener('change', async function () {
+      await loadPublicTierlists();
+    });
+
+    // ---- 초기화 ----
     (async function init() {
       buildTierColumns();
       updateModifyState();

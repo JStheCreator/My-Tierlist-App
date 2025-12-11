@@ -5,6 +5,8 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
 const app = express();
+
+// DB 파일 위치 (로컬 개발용·Render Disk 사용 시 이 경로만 바꾸면 됨)
 const db = new sqlite3.Database('./tierlist.db');
 
 // 관리자 비밀번호(마스터키)는 서버에만 둔다.
@@ -55,10 +57,24 @@ db.serialize(() => {
     CREATE TABLE IF NOT EXISTS public_tierlists (
       tierlist_id INTEGER PRIMARY KEY,
       published_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      like_count INTEGER DEFAULT 0,
+      FOREIGN KEY(tierlist_id) REFERENCES tierlists(id)
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tierlist_likes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tierlist_id INTEGER NOT NULL,
+      client_key TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(tierlist_id, client_key),
       FOREIGN KEY(tierlist_id) REFERENCES tierlists(id)
     );
   `);
 });
+
+// ----------------- 공통 유틸 -----------------
 
 function findOrCreateUser(name, password, cb) {
   db.get(`SELECT * FROM users WHERE name = ?`, [name], async (err, row) => {
@@ -129,6 +145,14 @@ function deleteTierlistInDb(id, cb) {
     });
 
     db.run(
+      `DELETE FROM tierlist_likes WHERE tierlist_id = ?`,
+      [id],
+      function (err0b) {
+        if (err0b) console.error(err0b);
+      }
+    );
+
+    db.run(
       `DELETE FROM items WHERE tierlist_id = ?`,
       [id],
       function (err1) {
@@ -153,7 +177,8 @@ function deleteTierlistInDb(id, cb) {
   });
 }
 
-// 관리자 로그인: 비번 → adminToken
+// ----------------- 관리자 로그인 -----------------
+
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body || {};
   if (!password) {
@@ -167,7 +192,8 @@ app.post('/api/admin/login', (req, res) => {
   res.json({ token });
 });
 
-// 티어리스트 생성 (일반 사용자)
+// ----------------- 티어리스트 생성/조회 -----------------
+
 app.post('/api/tierlists', (req, res) => {
   const { name, password, type, title } = req.body;
   if (!name || !password || !type || !title) {
@@ -197,15 +223,25 @@ app.post('/api/tierlists', (req, res) => {
   });
 });
 
-// 공개 티어리스트 목록 (공개된 것만)
+// 공개 티어리스트 목록 (정렬 옵션: created / likes)
 app.get('/api/tierlists', (req, res) => {
+  const sort = req.query.sort === 'likes' ? 'likes' : 'created';
+  const orderClause =
+    sort === 'likes'
+      ? 'ORDER BY public_tierlists.like_count DESC, public_tierlists.published_at DESC'
+      : 'ORDER BY public_tierlists.published_at DESC, tierlists.created_at DESC';
+
   db.all(
     `
-    SELECT tierlists.id, tierlists.title, tierlists.type, users.name AS owner
+    SELECT tierlists.id,
+           tierlists.title,
+           tierlists.type,
+           users.name AS owner,
+           public_tierlists.like_count
     FROM public_tierlists
     JOIN tierlists ON public_tierlists.tierlist_id = tierlists.id
     JOIN users ON tierlists.user_id = users.id
-    ORDER BY public_tierlists.published_at DESC, tierlists.created_at DESC
+    ${orderClause}
   `,
     [],
     (err, rows) => {
@@ -289,7 +325,6 @@ app.post('/api/tierlists/:id/auth', (req, res) => {
     return res.status(400).json({ error: 'missing auth' });
   }
 
-  // 관리자 비밀번호면 바로 통과
   if (password === ADMIN_KEY) {
     return res.json({ ok: true, admin: true });
   }
@@ -302,107 +337,6 @@ app.post('/api/tierlists/:id/auth', (req, res) => {
       return res.status(500).json({ error: 'server error' });
     }
     return res.json({ ok: true, admin: false });
-  });
-});
-
-// 아이템 추가 (소유자 or 관리자)
-app.post('/api/tierlists/:id/items', (req, res) => {
-  const tierlistId = req.params.id;
-  const { name, password, artist, title, imageUrl, description } = req.body;
-
-  if (!password || !title) {
-    return res.status(400).json({ error: 'missing fields' });
-  }
-
-  const doInsert = () => {
-    db.run(
-      `
-      INSERT INTO items (tierlist_id, artist, title, image_url, description, score, status)
-      VALUES (?, ?, ?, ?, ?, NULL, 'waiting')
-    `,
-      [tierlistId, artist || '', title, imageUrl || '', description || ''],
-      function (err2) {
-        if (err2) {
-          console.error(err2);
-          return res.status(500).json({ error: 'server error' });
-        }
-        res.json({ id: this.lastID });
-      }
-    );
-  };
-
-  if (password === ADMIN_KEY) {
-    // 관리자 비번으로 강제 추가
-    return doInsert();
-  }
-
-  if (!name) {
-    return res.status(400).json({ error: 'missing name' });
-  }
-
-  assertOwner(tierlistId, name, password, (err) => {
-    if (err) {
-      if (err.message === 'FORBIDDEN') return res.status(403).json({ error: 'forbidden' });
-      if (err.message === 'NO_TIERLIST') return res.status(404).json({ error: 'not found' });
-      console.error(err);
-      return res.status(500).json({ error: 'server error' });
-    }
-    doInsert();
-  });
-});
-
-// 아이템 수정 (소유자 or 관리자)
-app.patch('/api/items/:id', (req, res) => {
-  const itemId = req.params.id;
-  const { name, password, score, status, description } = req.body;
-
-  if (!password) {
-    return res.status(400).json({ error: 'missing auth' });
-  }
-
-  db.get(`SELECT * FROM items WHERE id = ?`, [itemId], (err, item) => {
-    if (err) return res.status(500).json({ error: 'server error' });
-    if (!item) return res.status(404).json({ error: 'not found' });
-
-    const proceed = () => {
-      const newScore = typeof score === 'number' ? score : item.score;
-      const newStatus = status || item.status;
-      const newDesc = typeof description === 'string' ? description : item.description;
-
-      db.run(
-        `
-        UPDATE items
-        SET score = ?, status = ?, description = ?
-        WHERE id = ?
-      `,
-        [newScore, newStatus, newDesc, itemId],
-        function (err3) {
-          if (err3) {
-            console.error(err3);
-            return res.status(500).json({ error: 'server error' });
-          }
-          res.json({ ok: true });
-        }
-      );
-    };
-
-    if (password === ADMIN_KEY) {
-      return proceed();
-    }
-
-    if (!name) {
-      return res.status(400).json({ error: 'missing name' });
-    }
-
-    assertOwner(item.tierlist_id, name, password, (err2) => {
-      if (err2) {
-        if (err2.message === 'FORBIDDEN') return res.status(403).json({ error: 'forbidden' });
-        if (err2.message === 'NO_TIERLIST') return res.status(404).json({ error: 'not found' });
-        console.error(err2);
-        return res.status(500).json({ error: 'server error' });
-      }
-      proceed();
-    });
   });
 });
 
@@ -455,7 +389,114 @@ app.patch('/api/tierlists/:id', (req, res) => {
   });
 });
 
-// 티어리스트 삭제 (소유자 or 관리자)
+// ----------------- 아이템 추가/수정 -----------------
+
+// 아이템 추가 (소유자 or 관리자)
+app.post('/api/tierlists/:id/items', (req, res) => {
+  const tierlistId = req.params.id;
+  const { name, password, artist, title, imageUrl, description } = req.body;
+
+  if (!password || !title) {
+    return res.status(400).json({ error: 'missing fields' });
+  }
+
+  const doInsert = () => {
+    db.run(
+      `
+      INSERT INTO items (tierlist_id, artist, title, image_url, description, score, status)
+      VALUES (?, ?, ?, ?, ?, NULL, 'waiting')
+    `,
+      [tierlistId, artist || '', title, imageUrl || '', description || ''],
+      function (err2) {
+        if (err2) {
+          console.error(err2);
+          return res.status(500).json({ error: 'server error' });
+        }
+        res.json({ id: this.lastID });
+      }
+    );
+  };
+
+  if (password === ADMIN_KEY) {
+    return doInsert();
+  }
+
+  if (!name) {
+    return res.status(400).json({ error: 'missing name' });
+  }
+
+  assertOwner(tierlistId, name, password, (err) => {
+    if (err) {
+      if (err.message === 'FORBIDDEN') return res.status(403).json({ error: 'forbidden' });
+      if (err.message === 'NO_TIERLIST') return res.status(404).json({ error: 'not found' });
+      console.error(err);
+      return res.status(500).json({ error: 'server error' });
+    }
+    doInsert();
+  });
+});
+
+// 아이템 수정 (점수/상태/설명; 소유자 or 관리자)
+app.patch('/api/items/:id', (req, res) => {
+  const itemId = req.params.id;
+  const { name, password, score, status, description } = req.body;
+
+  if (!password) {
+    return res.status(400).json({ error: 'missing auth' });
+  }
+
+  db.get(`SELECT * FROM items WHERE id = ?`, [itemId], (err, item) => {
+    if (err) return res.status(500).json({ error: 'server error' });
+    if (!item) return res.status(404).json({ error: 'not found' });
+
+    const proceed = () => {
+      const newScore =
+        typeof score === 'number' || score === null
+          ? score
+          : item.score;
+      const newStatus = status || item.status;
+      const newDesc =
+        typeof description === 'string' ? description : item.description;
+
+      db.run(
+        `
+        UPDATE items
+        SET score = ?, status = ?, description = ?
+        WHERE id = ?
+      `,
+        [newScore, newStatus, newDesc, itemId],
+        function (err3) {
+          if (err3) {
+            console.error(err3);
+            return res.status(500).json({ error: 'server error' });
+          }
+          res.json({ ok: true });
+        }
+      );
+    };
+
+    if (password === ADMIN_KEY) {
+      return proceed();
+    }
+
+    if (!name) {
+      return res.status(400).json({ error: 'missing name' });
+    }
+
+    assertOwner(item.tierlist_id, name, password, (err2) => {
+      if (err2) {
+        if (err2.message === 'FORBIDDEN') return res.status(403).json({ error: 'forbidden' });
+        if (err2.message === 'NO_TIERLIST') return res.status(404).json({ error: 'not found' });
+        console.error(err2);
+        return res.status(500).json({ error: 'server error' });
+      }
+      proceed();
+    });
+  });
+});
+
+// ----------------- 티어리스트 삭제 -----------------
+
 app.delete('/api/tierlists/:id', (req, res) => {
   const id = req.params.id;
   const { name, password } = req.body || {};
@@ -491,7 +532,8 @@ app.delete('/api/tierlists/:id', (req, res) => {
   });
 });
 
-// 관리자용: 전체 티어리스트 목록
+// ----------------- 관리자용 공개/비공개 & 목록 -----------------
+
 app.post('/api/admin/tierlists', (req, res) => {
   const { adminToken } = req.body || {};
   if (!assertAdminToken(adminToken)) {
@@ -504,7 +546,8 @@ app.post('/api/admin/tierlists', (req, res) => {
            tierlists.title,
            tierlists.type,
            users.name AS owner,
-           CASE WHEN public_tierlists.tierlist_id IS NULL THEN 0 ELSE 1 END AS isPublic
+           CASE WHEN public_tierlists.tierlist_id IS NULL THEN 0 ELSE 1 END AS isPublic,
+           COALESCE(public_tierlists.like_count, 0) AS like_count
     FROM tierlists
     JOIN users ON tierlists.user_id = users.id
     LEFT JOIN public_tierlists ON public_tierlists.tierlist_id = tierlists.id
@@ -521,7 +564,6 @@ app.post('/api/admin/tierlists', (req, res) => {
   );
 });
 
-// 관리자용: 공개 티어표 등재
 app.post('/api/admin/tierlists/:id/publish', (req, res) => {
   const { adminToken } = req.body || {};
   if (!assertAdminToken(adminToken)) {
@@ -531,8 +573,8 @@ app.post('/api/admin/tierlists/:id/publish', (req, res) => {
 
   db.run(
     `
-    INSERT OR IGNORE INTO public_tierlists (tierlist_id, published_at)
-    VALUES (?, CURRENT_TIMESTAMP)
+    INSERT OR IGNORE INTO public_tierlists (tierlist_id, published_at, like_count)
+    VALUES (?, CURRENT_TIMESTAMP, 0)
   `,
     [id],
     function (err) {
@@ -545,7 +587,6 @@ app.post('/api/admin/tierlists/:id/publish', (req, res) => {
   );
 });
 
-// 관리자용: 공개 티어표에서 내리기
 app.post('/api/admin/tierlists/:id/unpublish', (req, res) => {
   const { adminToken } = req.body || {};
   if (!assertAdminToken(adminToken)) {
@@ -568,6 +609,141 @@ app.post('/api/admin/tierlists/:id/unpublish', (req, res) => {
     }
   );
 });
+
+// ----------------- 좋아요 기능 -----------------
+
+// 클라이언트 키 기반으로 좋아요 토글 (1인 1번)
+app.post('/api/tierlists/:id/like', (req, res) => {
+  const tierlistId = parseInt(req.params.id, 10);
+  const { clientKey } = req.body || {};
+  if (!clientKey) {
+    return res.status(400).json({ error: 'missing clientKey' });
+  }
+
+  db.get(
+    `SELECT * FROM public_tierlists WHERE tierlist_id = ?`,
+    [tierlistId],
+    (err, pubRow) => {
+      if (err) return res.status(500).json({ error: 'server error' });
+      if (!pubRow) return res.status(404).json({ error: 'not published' });
+
+      db.get(
+        `SELECT * FROM tierlist_likes WHERE tierlist_id = ? AND client_key = ?`,
+        [tierlistId, clientKey],
+        (err2, likeRow) => {
+          if (err2) return res.status(500).json({ error: 'server error' });
+
+          if (likeRow) {
+            db.serialize(() => {
+              db.run(
+                `DELETE FROM tierlist_likes WHERE id = ?`,
+                [likeRow.id],
+                function (err3) {
+                  if (err3) {
+                    console.error(err3);
+                  }
+                }
+              );
+              db.run(
+                `
+                UPDATE public_tierlists
+                SET like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0 END
+                WHERE tierlist_id = ?
+              `,
+                [tierlistId],
+                function (err4) {
+                  if (err4) {
+                    console.error(err4);
+                    return res.status(500).json({ error: 'server error' });
+                  }
+                  db.get(
+                    `SELECT like_count FROM public_tierlists WHERE tierlist_id = ?`,
+                    [tierlistId],
+                    (err5, row5) => {
+                      if (err5) return res.status(500).json({ error: 'server error' });
+                      res.json({ liked: false, likeCount: row5 ? row5.like_count : 0 });
+                    }
+                  );
+                }
+              );
+            });
+          } else {
+            db.serialize(() => {
+              db.run(
+                `
+                INSERT INTO tierlist_likes (tierlist_id, client_key)
+                VALUES (?, ?)
+              `,
+                [tierlistId, clientKey],
+                function (err3) {
+                  if (err3) {
+                    if (err3.code === 'SQLITE_CONSTRAINT') {
+                      return res.status(409).json({ error: 'already liked' });
+                    }
+                    console.error(err3);
+                    return res.status(500).json({ error: 'server error' });
+                  }
+
+                  db.run(
+                    `
+                    UPDATE public_tierlists
+                    SET like_count = like_count + 1
+                    WHERE tierlist_id = ?
+                  `,
+                    [tierlistId],
+                    function (err4) {
+                      if (err4) {
+                        console.error(err4);
+                        return res.status(500).json({ error: 'server error' });
+                      }
+                      db.get(
+                        `SELECT like_count FROM public_tierlists WHERE tierlist_id = ?`,
+                        [tierlistId],
+                        (err5, row5) => {
+                          if (err5) return res.status(500).json({ error: 'server error' });
+                          res.json({ liked: true, likeCount: row5 ? row5.like_count : 0 });
+                        }
+                      );
+                    }
+                  );
+                }
+              );
+            });
+          }
+        }
+      );
+    }
+  );
+});
+
+// 해당 클라이언트가 특정 티어리스트에 좋아요 눌렀는지 확인
+app.post('/api/tierlists/:id/is-liked', (req, res) => {
+  const tierlistId = parseInt(req.params.id, 10);
+  const { clientKey } = req.body || {};
+  if (!clientKey) {
+    return res.status(400).json({ error: 'missing clientKey' });
+  }
+
+  db.get(
+    `SELECT like_count FROM public_tierlists WHERE tierlist_id = ?`,
+    [tierlistId],
+    (err, pubRow) => {
+      if (err) return res.status(500).json({ error: 'server error' });
+      if (!pubRow) return res.json({ liked: false, likeCount: 0 });
+
+      db.get(
+        `SELECT 1 FROM tierlist_likes WHERE tierlist_id = ? AND client_key = ?`,
+        [tierlistId, clientKey],
+        (err2, likeRow) => {
+          if (err2) return res.status(500).json({ error: 'server error' });
+          res.json({ liked: !!likeRow, likeCount: pubRow.like_count });
+        }
+      );
+    }
+  );
+});
+
+// ----------------- 서버 시작 -----------------
 
 const PORT = 3000;
 app.listen(PORT, () => {
