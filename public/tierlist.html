@@ -501,6 +501,7 @@
           </div>
           <div style="display:flex; gap:6px; align-items:center; justify-content:flex-end;">
             <span id="modifyStateLabel" class="tier-meta" style="font-size:0.7rem; opacity:0.75;"></span>
+            <button id="renameTierlistBtn" class="btn btn-ghost" style="display:none;">RENAME</button>
             <button id="modifyTierlistBtn" class="btn btn-ghost" style="display:none;">MODIFY</button>
             <button id="deleteTierlistBtn" class="btn btn-danger" style="display:none;">DELETE</button>
           </div>
@@ -554,7 +555,7 @@
       </div>
       <form id="authForm" class="modal-body">
         <div id="authHelpText" style="font-size:0.78rem; margin-bottom:8px; opacity:0.85;">
-          이 티어리스트를 만든 사람이 입력했던 비밀번호를 입력하면 수정 모드로 전환됩니다.
+          이 티어리스트를 만든 사람이 입력했던 비밀번호 또는 관리자 비밀번호를 입력하면 수정 모드로 전환됩니다.
         </div>
         <input
           type="password"
@@ -596,7 +597,6 @@
 
   <script>
     const API_BASE = '';
-    const MASTER_KEY = 'PSMASTERKEY'; // MODIFY + 관리자용 마스터키
 
     const tierBoardEl = document.getElementById('tierBoard');
     const waitingSectionEl = document.getElementById('waitingSection');
@@ -614,6 +614,7 @@
 
     const modifyTierlistBtn = document.getElementById('modifyTierlistBtn');
     const deleteTierlistBtn = document.getElementById('deleteTierlistBtn');
+    const renameTierlistBtn = document.getElementById('renameTierlistBtn');
     const modifyStateLabel = document.getElementById('modifyStateLabel');
 
     const createForm = document.getElementById('createForm');
@@ -643,6 +644,7 @@
     let hasModifyPermission = false;
 
     let isAdmin = false;
+    let adminToken = null;
 
     let publicTierlists = [];
     let myTierlists = [];
@@ -677,12 +679,15 @@
       if (!hasTier) {
         modifyTierlistBtn.style.display = 'none';
         deleteTierlistBtn.style.display = 'none';
+        renameTierlistBtn.style.display = 'none';
       } else if (hasModifyPermission) {
         modifyTierlistBtn.style.display = 'none';
         deleteTierlistBtn.style.display = 'inline-flex';
+        renameTierlistBtn.style.display = 'inline-flex';
       } else {
         modifyTierlistBtn.style.display = 'inline-flex';
         deleteTierlistBtn.style.display = 'none';
+        renameTierlistBtn.style.display = 'none';
       }
 
       if (hasTier && hasModifyPermission) {
@@ -928,7 +933,12 @@
 
       try {
         const res = await fetch(API_BASE + '/api/tierlists/' + encodeURIComponent(currentTierlistId), {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: currentTierOwner,
+            password: currentTierPassword
+          })
         });
         if (!res.ok) {
           alert('티어리스트 삭제에 실패했습니다. 서버 로그를 확인하세요.');
@@ -968,10 +978,46 @@
 
     deleteTierlistBtn.addEventListener('click', function () {
       if (!hasModifyPermission) {
-        alert('수정 모드가 아닙니다. 상단의 MODIFY 버튼으로 먼저 비밀번호를 인증하세요.');
+        alert('수정 모드가 아닙니다. 상단의 MODIFY 버튼을 눌러 비밀번호를 인증하세요.');
         return;
       }
       deleteTierlistInModifyMode();
+    });
+
+    // 제목 수정 버튼
+    renameTierlistBtn.addEventListener('click', async function () {
+      if (!hasModifyPermission || !currentTierlistId || !currentTierOwner || !currentTierPassword) {
+        alert('먼저 수정 모드로 전환하십시오.');
+        return;
+      }
+      const currentTitle = tierTitleDisplay.textContent || '';
+      const newTitle = prompt('새 티어리스트 제목을 입력하세요.', currentTitle);
+      if (newTitle == null) return;
+      const title = newTitle.trim();
+      if (!title) {
+        alert('제목은 비어 있을 수 없습니다.');
+        return;
+      }
+
+      try {
+        const res = await fetch(API_BASE + '/api/tierlists/' + encodeURIComponent(currentTierlistId), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: currentTierOwner,
+            password: currentTierPassword,
+            title
+          })
+        });
+        if (!res.ok) {
+          alert('제목 수정에 실패했습니다.');
+          return;
+        }
+        tierTitleDisplay.textContent = title;
+        await Promise.all([loadPublicTierlists(), loadMyTierlists(), isAdmin ? loadAdminTierlists() : Promise.resolve()]);
+      } catch (err) {
+        alert('서버 통신 중 오류가 발생했습니다.');
+      }
     });
 
     authCloseBtn.addEventListener('click', function () {
@@ -986,7 +1032,7 @@
       }
     });
 
-    // MODIFY 비밀번호 인증 + 마스터키 처리
+    // MODIFY 비밀번호 인증 (소유자 비번 또는 관리자 비번)
     authForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       const pw = authPasswordInput.value.trim();
@@ -994,14 +1040,6 @@
 
       if (!currentTierlistId || !currentTierOwner) {
         alert('먼저 티어리스트를 선택하십시오.');
-        return;
-      }
-
-      if (pw === MASTER_KEY) {
-        currentTierPassword = MASTER_KEY;
-        hasModifyPermission = true;
-        updateModifyState();
-        authBackdrop.style.display = 'none';
         return;
       }
 
@@ -1025,15 +1063,16 @@
           }
           return;
         }
+
+        const data = await res.json();
+        currentTierPassword = pw;
+        hasModifyPermission = true;
+        updateModifyState();
+        authBackdrop.style.display = 'none';
       } catch (err) {
         alert('서버 통신 중 오류가 발생했습니다.');
         return;
       }
-
-      currentTierPassword = pw;
-      hasModifyPermission = true;
-      updateModifyState();
-      authBackdrop.style.display = 'none';
     });
 
     // 관리자 로그인
@@ -1052,19 +1091,36 @@
       if (e.target === adminBackdrop) adminBackdrop.style.display = 'none';
     });
 
-    adminForm.addEventListener('submit', function (e) {
+    adminForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       const pw = adminPasswordInput.value.trim();
       if (!pw) return;
-      if (pw !== MASTER_KEY) {
-        alert('관리자 비밀번호가 일치하지 않습니다.');
+
+      try {
+        const res = await fetch(API_BASE + '/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pw })
+        });
+        if (!res.ok) {
+          if (res.status === 403) {
+            alert('관리자 비밀번호가 일치하지 않습니다.');
+          } else {
+            alert('로그인 중 오류가 발생했습니다.');
+          }
+          return;
+        }
+        const data = await res.json();
+        adminToken = data.token;
+        isAdmin = true;
+        adminBackdrop.style.display = 'none';
+        adminLoginArea.style.display = 'none';
+        adminSectionEl.style.display = 'block';
+        await loadAdminTierlists();
+      } catch (err) {
+        alert('서버 통신 중 오류가 발생했습니다.');
         return;
       }
-      isAdmin = true;
-      adminBackdrop.style.display = 'none';
-      adminLoginArea.style.display = 'none';
-      adminSectionEl.style.display = 'block';
-      loadAdminTierlists();
     });
 
     function makeTierlistClickHandler(id) {
@@ -1158,13 +1214,25 @@
         btn.className = 'btn btn-primary';
         btn.style.padding = '4px 8px';
         btn.style.fontSize = '0.7rem';
-        btn.textContent = tl.isPublic ? '공개 등재 완료' : '공개 티어표에 등재';
-        btn.disabled = tl.isPublic;
-        btn.addEventListener('click', async function (e) {
-          e.stopPropagation();
-          if (!confirm('이 티어리스트를 공개 티어표에 등재하시겠습니까?')) return;
-          await publishTierlist(tl.id);
-        });
+
+        if (tl.isPublic) {
+          btn.textContent = '공개에서 내리기';
+          btn.disabled = false;
+          btn.addEventListener('click', async function (e) {
+            e.stopPropagation();
+            if (!confirm('이 티어리스트를 공개 목록에서 내리시겠습니까?')) return;
+            await unpublishTierlist(tl.id);
+          });
+        } else {
+          btn.textContent = '공개 티어표에 등재';
+          btn.disabled = false;
+          btn.addEventListener('click', async function (e) {
+            e.stopPropagation();
+            if (!confirm('이 티어리스트를 공개 티어표에 등재하시겠습니까?')) return;
+            await publishTierlist(tl.id);
+          });
+        }
+
         right.appendChild(btn);
 
         row.appendChild(left);
@@ -1205,11 +1273,11 @@
     }
 
     async function loadAdminTierlists() {
-      if (!isAdmin) return;
+      if (!isAdmin || !adminToken) return;
       const res = await fetch(API_BASE + '/api/admin/tierlists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminKey: MASTER_KEY })
+        body: JSON.stringify({ adminToken })
       });
       if (!res.ok) return;
       adminTierlists = await res.json();
@@ -1217,13 +1285,34 @@
     }
 
     async function publishTierlist(id) {
+      if (!isAdmin || !adminToken) {
+        alert('관리자 권한이 필요합니다.');
+        return;
+      }
       const res = await fetch(API_BASE + '/api/admin/tierlists/' + id + '/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminKey: MASTER_KEY })
+        body: JSON.stringify({ adminToken })
       });
       if (!res.ok) {
         alert('공개 티어표 등재에 실패했습니다.');
+        return;
+      }
+      await Promise.all([loadAdminTierlists(), loadPublicTierlists()]);
+    }
+
+    async function unpublishTierlist(id) {
+      if (!isAdmin || !adminToken) {
+        alert('관리자 권한이 필요합니다.');
+        return;
+      }
+      const res = await fetch(API_BASE + '/api/admin/tierlists/' + id + '/unpublish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminToken })
+      });
+      if (!res.ok) {
+        alert('공개 해제에 실패했습니다.');
         return;
       }
       await Promise.all([loadAdminTierlists(), loadPublicTierlists()]);
