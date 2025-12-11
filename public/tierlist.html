@@ -45,7 +45,7 @@
     .sidebar {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 12px;
     }
     .app-title {
       font-family: 'Space Grotesk', system-ui;
@@ -127,9 +127,18 @@
       background: #374151;
     }
 
+    .section-title {
+      margin-top: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.8;
+    }
+
     .tierlist-list {
-      margin-top: 10px;
-      max-height: 320px;
+      margin-top: 4px;
+      max-height: 180px;
       overflow-y: auto;
       padding-right: 4px;
       font-size: 0.8rem;
@@ -462,11 +471,21 @@
       </form>
 
       <div>
-        <div style="margin-top: 10px; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8;">
-          공개된 TierList
+        <div class="section-title">나의 TierList</div>
+        <div id="myTierlistList" class="tierlist-list"></div>
+
+        <div class="section-title">공개 TierList</div>
+        <div id="publicTierlistList" class="tierlist-list"></div>
+        <div id="publicTierlistPagination" class="pagination"></div>
+
+        <section id="adminSection" style="display:none; margin-top:8px;">
+          <div class="section-title">관리자용 전체 TierList</div>
+          <div id="adminTierlistList" class="tierlist-list"></div>
+        </section>
+
+        <div id="adminLoginArea" style="margin-top:6px; text-align:right; font-size:0.7rem; opacity:0.75;">
+          <button id="adminLoginBtn" class="btn btn-ghost" style="padding:4px 8px;">관리자 로그인</button>
         </div>
-        <div id="tierlistList" class="tierlist-list"></div>
-        <div id="tierlistPagination" class="pagination"></div>
       </div>
     </aside>
 
@@ -548,16 +567,53 @@
     </div>
   </div>
 
+  <!-- 관리자 로그인 모달 -->
+  <div id="adminBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">관리자 로그인</div>
+        <button type="button" class="modal-close" id="adminCloseBtn">&times;</button>
+      </div>
+      <form id="adminForm" class="modal-body">
+        <div style="font-size:0.78rem; margin-bottom:8px; opacity:0.85;">
+          관리자 비밀번호를 입력하면 전체 티어리스트 관리 창이 열립니다.
+        </div>
+        <input
+          type="password"
+          id="adminPassword"
+          placeholder="관리자 비밀번호"
+          style="width:100%; padding:6px 8px; border-radius:999px; border:1px solid rgba(148,163,184,0.8); background:#111827; color:#e5e7eb; font-size:0.8rem; margin-bottom:8px;"
+        />
+        <div style="display:flex; justify-content:flex-end; gap:6px;">
+          <button type="button" class="btn" id="adminCancelBtn" style="background:#374151; color:#e5e7eb; padding:6px 10px;">취소</button>
+          <button type="submit" class="btn btn-primary" style="margin-top:0; width:auto;">확인</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     const API_BASE = '';
+    const MASTER_KEY = 'PSMASTERKEY'; // MODIFY + 관리자용 마스터키
 
     const tierBoardEl = document.getElementById('tierBoard');
     const waitingSectionEl = document.getElementById('waitingSection');
     const waitingListEl = document.getElementById('waitingList');
     const tierTitleDisplay = document.getElementById('tierTitleDisplay');
     const tierMetaDisplay = document.getElementById('tierMetaDisplay');
-    const tierlistListEl = document.getElementById('tierlistList');
-    const tierlistPaginationEl = document.getElementById('tierlistPagination');
+
+    const myTierlistListEl = document.getElementById('myTierlistList');
+    const publicTierlistListEl = document.getElementById('publicTierlistList');
+    const publicTierlistPaginationEl = document.getElementById('publicTierlistPagination');
+    const adminSectionEl = document.getElementById('adminSection');
+    const adminTierlistListEl = document.getElementById('adminTierlistList');
+    const adminLoginArea = document.getElementById('adminLoginArea');
+    const adminLoginBtn = document.getElementById('adminLoginBtn');
+
+    const modifyTierlistBtn = document.getElementById('modifyTierlistBtn');
+    const deleteTierlistBtn = document.getElementById('deleteTierlistBtn');
+    const modifyStateLabel = document.getElementById('modifyStateLabel');
+
     const createForm = document.getElementById('createForm');
     const addItemForm = document.getElementById('addItemForm');
 
@@ -566,15 +622,17 @@
     const modalBody = document.getElementById('modalBody');
     const modalCloseBtn = document.getElementById('modalCloseBtn');
 
-    const deleteTierlistBtn = document.getElementById('deleteTierlistBtn');
-    const modifyTierlistBtn = document.getElementById('modifyTierlistBtn');
-    const modifyStateLabel = document.getElementById('modifyStateLabel');
-
     const authBackdrop = document.getElementById('authBackdrop');
     const authForm = document.getElementById('authForm');
     const authPasswordInput = document.getElementById('authPassword');
     const authCloseBtn = document.getElementById('authCloseBtn');
     const authCancelBtn = document.getElementById('authCancelBtn');
+
+    const adminBackdrop = document.getElementById('adminBackdrop');
+    const adminForm = document.getElementById('adminForm');
+    const adminPasswordInput = document.getElementById('adminPassword');
+    const adminCloseBtn = document.getElementById('adminCloseBtn');
+    const adminCancelBtn = document.getElementById('adminCancelBtn');
 
     let currentTierlistId = null;
     let currentTierType = null;
@@ -582,9 +640,14 @@
     let currentTierPassword = null;
     let hasModifyPermission = false;
 
-    let allTierlists = [];
-    let currentTierPage = 1;
-    const TIERLISTS_PER_PAGE = 10;
+    let isAdmin = false;
+
+    let publicTierlists = [];
+    let myTierlists = [];
+    let adminTierlists = [];
+
+    let currentPublicPage = 1;
+    const PUBLIC_PER_PAGE = 10;
 
     function getQueryParam(key) {
       return new URLSearchParams(window.location.search).get(key);
@@ -852,7 +915,6 @@
       }
     }
 
-    // 수정 모드에서만 호출되는 삭제 함수 (DELETE 요청에 비밀번호 안 보냄)
     async function deleteTierlistInModifyMode() {
       if (!hasModifyPermission || !currentTierlistId) {
         alert('삭제 권한이 없습니다. 상단의 MODIFY 버튼으로 먼저 수정 모드에 진입하세요.');
@@ -887,7 +949,7 @@
       document.querySelectorAll('.tier-dropzone').forEach(function (dz) { dz.innerHTML = ''; });
       updateModifyState();
       updateAddItemFormForType(null);
-      await loadTierlistList();
+      await Promise.all([loadPublicTierlists(), loadMyTierlists(), isAdmin ? loadAdminTierlists() : Promise.resolve()]);
     }
 
     function openAuthModal() {
@@ -902,7 +964,6 @@
 
     modifyTierlistBtn.addEventListener('click', openAuthModal);
 
-    // 수정 모드가 아니면 경고, 수정 모드면 confirm만 띄우고 바로 삭제
     deleteTierlistBtn.addEventListener('click', function () {
       if (!hasModifyPermission) {
         alert('수정 모드가 아닙니다. 상단의 MODIFY 버튼으로 먼저 비밀번호를 인증하세요.');
@@ -923,7 +984,7 @@
       }
     });
 
-    // *** 여기 수정: 비밀번호를 서버에 검증 요청 보내고, 성공했을 때만 수정 모드로 전환 ***
+    // MODIFY 비밀번호 인증 + 마스터키 처리
     authForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       const pw = authPasswordInput.value.trim();
@@ -931,6 +992,14 @@
 
       if (!currentTierlistId || !currentTierOwner) {
         alert('먼저 티어리스트를 선택하십시오.');
+        return;
+      }
+
+      if (pw === MASTER_KEY) {
+        currentTierPassword = MASTER_KEY;
+        hasModifyPermission = true;
+        updateModifyState();
+        authBackdrop.style.display = 'none';
         return;
       }
 
@@ -952,7 +1021,6 @@
           } else {
             alert('인증 중 오류가 발생했습니다.');
           }
-          // 비번 틀린 경우에는 수정모드로 전환하지 않고 그대로 읽기 모드 유지
           return;
         }
       } catch (err) {
@@ -960,23 +1028,61 @@
         return;
       }
 
-      // 여기까지 왔으면 비밀번호 검증 성공 → 수정 모드 ON
       currentTierPassword = pw;
       hasModifyPermission = true;
       updateModifyState();
       authBackdrop.style.display = 'none';
     });
 
-    function renderTierlistPage() {
-      tierlistListEl.innerHTML = '';
-      tierlistPaginationEl.innerHTML = '';
-      if (!allTierlists || allTierlists.length === 0) return;
+    // 관리자 로그인
+    adminLoginBtn.addEventListener('click', function () {
+      adminPasswordInput.value = '';
+      adminBackdrop.style.display = 'flex';
+      adminPasswordInput.focus();
+    });
+    adminCloseBtn.addEventListener('click', function () {
+      adminBackdrop.style.display = 'none';
+    });
+    adminCancelBtn.addEventListener('click', function () {
+      adminBackdrop.style.display = 'none';
+    });
+    adminBackdrop.addEventListener('click', function (e) {
+      if (e.target === adminBackdrop) adminBackdrop.style.display = 'none';
+    });
 
-      const totalPages = Math.ceil(allTierlists.length / TIERLISTS_PER_PAGE);
-      if (currentTierPage > totalPages) currentTierPage = totalPages;
+    adminForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const pw = adminPasswordInput.value.trim();
+      if (!pw) return;
+      if (pw !== MASTER_KEY) {
+        alert('관리자 비밀번호가 일치하지 않습니다.');
+        return;
+      }
+      isAdmin = true;
+      adminBackdrop.style.display = 'none';
+      adminLoginArea.style.display = 'none';
+      adminSectionEl.style.display = 'block';
+      loadAdminTierlists();
+    });
 
-      const start = (currentTierPage - 1) * TIERLISTS_PER_PAGE;
-      const slice = allTierlists.slice(start, start + TIERLISTS_PER_PAGE);
+    function makeTierlistClickHandler(id) {
+      return function () {
+        const url = new URL(window.location.href);
+        url.searchParams.set('id', id);
+        window.location.href = url.toString();
+      };
+    }
+
+    function renderPublicTierlists() {
+      publicTierlistListEl.innerHTML = '';
+      publicTierlistPaginationEl.innerHTML = '';
+      if (!publicTierlists || publicTierlists.length === 0) return;
+
+      const totalPages = Math.ceil(publicTierlists.length / PUBLIC_PER_PAGE);
+      if (currentPublicPage > totalPages) currentPublicPage = totalPages;
+
+      const start = (currentPublicPage - 1) * PUBLIC_PER_PAGE;
+      const slice = publicTierlists.slice(start, start + PUBLIC_PER_PAGE);
 
       slice.forEach(function (tl) {
         const div = document.createElement('div');
@@ -987,38 +1093,140 @@
             '<div style="font-size:0.7rem; opacity:0.75;">by ' + tl.owner + '</div>' +
           '</div>' +
           '<span class="type">' + tl.type + '</span>';
-        div.addEventListener('click', function () {
-          const url = new URL(window.location.href);
-          url.searchParams.set('id', tl.id);
-          window.location.href = url.toString();
-        });
-        tierlistListEl.appendChild(div);
+        div.addEventListener('click', makeTierlistClickHandler(tl.id));
+        publicTierlistListEl.appendChild(div);
       });
 
       if (totalPages > 1) {
         for (let p = 1; p <= totalPages; p++) {
           const btn = document.createElement('button');
           btn.type = 'button';
-          btn.className = 'page-btn' + (p === currentTierPage ? ' active' : '');
+          btn.className = 'page-btn' + (p === currentPublicPage ? ' active' : '');
           btn.textContent = String(p);
           btn.addEventListener('click', function () {
-            currentTierPage = p;
-            renderTierlistPage();
+            currentPublicPage = p;
+            renderPublicTierlists();
           });
-          tierlistPaginationEl.appendChild(btn);
+          publicTierlistPaginationEl.appendChild(btn);
         }
       }
     }
 
-    async function loadTierlistList() {
-      const res = await fetch(API_BASE + '/api/tierlists');
-      if (!res.ok) return;
-      allTierlists = await res.json();
-      currentTierPage = 1;
-      renderTierlistPage();
+    function renderMyTierlists() {
+      myTierlistListEl.innerHTML = '';
+      if (!myTierlists || myTierlists.length === 0) return;
+
+      myTierlists.forEach(function (tl) {
+        const div = document.createElement('div');
+        div.className = 'tierlist-item';
+        div.innerHTML =
+          '<div>' +
+            '<div>' + tl.title + '</div>' +
+            '<div style="font-size:0.7rem; opacity:0.75;">내 티어리스트</div>' +
+          '</div>' +
+          '<span class="type">' + tl.type + '</span>';
+        div.addEventListener('click', makeTierlistClickHandler(tl.id));
+        myTierlistListEl.appendChild(div);
+      });
     }
 
-    // preserveMode: true면 현재 수정 모드/비번 유지, false면 읽기모드로 초기화
+    function renderAdminTierlists() {
+      adminTierlistListEl.innerHTML = '';
+      if (!adminTierlists || adminTierlists.length === 0) return;
+
+      adminTierlists.forEach(function (tl) {
+        const row = document.createElement('div');
+        row.className = 'tierlist-item';
+        const left = document.createElement('div');
+        left.innerHTML =
+          '<div>' + tl.title + '</div>' +
+          '<div style="font-size:0.7rem; opacity:0.75;">by ' + tl.owner + '</div>';
+        const right = document.createElement('div');
+        right.style.display = 'flex';
+        right.style.alignItems = 'center';
+        right.style.gap = '4px';
+
+        const typeSpan = document.createElement('span');
+        typeSpan.className = 'type';
+        typeSpan.textContent = tl.type + (tl.isPublic ? ' · 공개중' : '');
+        right.appendChild(typeSpan);
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-primary';
+        btn.style.padding = '4px 8px';
+        btn.style.fontSize = '0.7rem';
+        btn.textContent = tl.isPublic ? '공개 등재 완료' : '공개 티어표에 등재';
+        btn.disabled = tl.isPublic;
+        btn.addEventListener('click', async function (e) {
+          e.stopPropagation();
+          if (!confirm('이 티어리스트를 공개 티어표에 등재하시겠습니까?')) return;
+          await publishTierlist(tl.id);
+        });
+        right.appendChild(btn);
+
+        row.appendChild(left);
+        row.appendChild(right);
+        row.addEventListener('click', makeTierlistClickHandler(tl.id));
+        adminTierlistListEl.appendChild(row);
+      });
+    }
+
+    async function loadPublicTierlists() {
+      const res = await fetch(API_BASE + '/api/tierlists');
+      if (!res.ok) return;
+      publicTierlists = await res.json();
+      currentPublicPage = 1;
+      renderPublicTierlists();
+    }
+
+    async function loadMyTierlists() {
+      const name = localStorage.getItem('tier_creator_name');
+      const password = localStorage.getItem('tier_creator_password');
+      if (!name || !password) {
+        myTierlists = [];
+        renderMyTierlists();
+        return;
+      }
+      const res = await fetch(API_BASE + '/api/user-tierlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, password })
+      });
+      if (!res.ok) {
+        myTierlists = [];
+        renderMyTierlists();
+        return;
+      }
+      myTierlists = await res.json();
+      renderMyTierlists();
+    }
+
+    async function loadAdminTierlists() {
+      if (!isAdmin) return;
+      const res = await fetch(API_BASE + '/api/admin/tierlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminKey: MASTER_KEY })
+      });
+      if (!res.ok) return;
+      adminTierlists = await res.json();
+      renderAdminTierlists();
+    }
+
+    async function publishTierlist(id) {
+      const res = await fetch(API_BASE + '/api/admin/tierlists/' + id + '/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminKey: MASTER_KEY })
+      });
+      if (!res.ok) {
+        alert('공개 티어표 등재에 실패했습니다.');
+        return;
+      }
+      await Promise.all([loadAdminTierlists(), loadPublicTierlists()]);
+    }
+
     async function loadTierlist(id, preserveMode) {
       const res = await fetch(API_BASE + '/api/tierlists/' + id);
       if (!res.ok) {
@@ -1092,6 +1300,8 @@
       localStorage.setItem('tier_creator_name', name);
       localStorage.setItem('tier_creator_password', password);
 
+      await loadMyTierlists();
+
       const url = new URL(window.location.href);
       url.searchParams.set('id', out.id);
       window.location.href = url.toString();
@@ -1154,7 +1364,8 @@
     (async function init() {
       buildTierColumns();
       updateModifyState();
-      await loadTierlistList();
+
+      await Promise.all([loadPublicTierlists(), loadMyTierlists()]);
 
       const id = getQueryParam('id');
       if (id) {

@@ -6,6 +6,8 @@ const bcrypt = require('bcrypt');
 const app = express();
 const db = new sqlite3.Database('./tierlist.db');
 
+const ADMIN_KEY = process.env.ADMIN_KEY || 'PSMASTERKEY';
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -43,6 +45,15 @@ db.serialize(() => {
       FOREIGN KEY(tierlist_id) REFERENCES tierlists(id)
     );
   `);
+
+  // 공개 티어표 등재 여부 관리 테이블
+  db.run(`
+    CREATE TABLE IF NOT EXISTS public_tierlists (
+      tierlist_id INTEGER PRIMARY KEY,
+      published_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(tierlist_id) REFERENCES tierlists(id)
+    );
+  `);
 });
 
 function findOrCreateUser(name, password, cb) {
@@ -71,6 +82,16 @@ function findOrCreateUser(name, password, cb) {
   });
 }
 
+function authUser(name, password, cb) {
+  db.get(`SELECT * FROM users WHERE name = ?`, [name], async (err, row) => {
+    if (err) return cb(err);
+    if (!row) return cb(new Error('NO_USER'));
+    const ok = await bcrypt.compare(password, row.password_hash);
+    if (!ok) return cb(new Error('INVALID_PASSWORD'));
+    cb(null, row);
+  });
+}
+
 function assertOwner(tierlistId, name, password, cb) {
   db.get(
     `
@@ -91,6 +112,11 @@ function assertOwner(tierlistId, name, password, cb) {
   );
 }
 
+function assertAdminKey(key) {
+  return key && key === ADMIN_KEY;
+}
+
+// 티어리스트 생성 (일반 사용자)
 app.post('/api/tierlists', (req, res) => {
   const { name, password, type, title } = req.body;
   if (!name || !password || !type || !title) {
@@ -120,13 +146,15 @@ app.post('/api/tierlists', (req, res) => {
   });
 });
 
+// 공개 티어리스트 목록 (공개된 것만)
 app.get('/api/tierlists', (req, res) => {
   db.all(
     `
     SELECT tierlists.id, tierlists.title, tierlists.type, users.name AS owner
-    FROM tierlists
+    FROM public_tierlists
+    JOIN tierlists ON public_tierlists.tierlist_id = tierlists.id
     JOIN users ON tierlists.user_id = users.id
-    ORDER BY tierlists.created_at DESC
+    ORDER BY public_tierlists.published_at DESC, tierlists.created_at DESC
   `,
     [],
     (err, rows) => {
@@ -136,6 +164,40 @@ app.get('/api/tierlists', (req, res) => {
   );
 });
 
+// 특정 유저의 티어리스트 목록 (나의 티어표)
+app.post('/api/user-tierlists', (req, res) => {
+  const { name, password } = req.body;
+  if (!name || !password) {
+    return res.status(400).json({ error: 'missing auth' });
+  }
+
+  authUser(name, password, (err, user) => {
+    if (err) {
+      if (err.message === 'NO_USER' || err.message === 'INVALID_PASSWORD') {
+        return res.status(401).json({ error: 'invalid credentials' });
+      }
+      console.error(err);
+      return res.status(500).json({ error: 'server error' });
+    }
+
+    db.all(
+      `
+      SELECT tierlists.id, tierlists.title, tierlists.type, users.name AS owner
+      FROM tierlists
+      JOIN users ON tierlists.user_id = users.id
+      WHERE tierlists.user_id = ?
+      ORDER BY tierlists.created_at DESC
+    `,
+      [user.id],
+      (err2, rows) => {
+        if (err2) return res.status(500).json({ error: 'server error' });
+        res.json(rows);
+      }
+    );
+  });
+});
+
+// 단일 티어리스트 + 아이템
 app.get('/api/tierlists/:id', (req, res) => {
   const id = req.params.id;
 
@@ -167,12 +229,18 @@ app.get('/api/tierlists/:id', (req, res) => {
   );
 });
 
+// MODIFY용 비밀번호 인증
 app.post('/api/tierlists/:id/auth', (req, res) => {
   const id = req.params.id;
   const { name, password } = req.body;
 
   if (!name || !password) {
     return res.status(400).json({ error: 'missing auth' });
+  }
+
+  // 마스터키는 서버에서도 바로 통과
+  if (password === ADMIN_KEY) {
+    return res.json({ ok: true, admin: true });
   }
 
   assertOwner(id, name, password, (err) => {
@@ -186,49 +254,7 @@ app.post('/api/tierlists/:id/auth', (req, res) => {
   });
 });
 
-
-/**
- * 새로 추가한 부분: 티어리스트 삭제 라우트
- * 프론트에서 DELETE /api/tierlists/:id 로 호출하면 여기서 DB에서 지움
- */
-app.delete('/api/tierlists/:id', (req, res) => {
-  const id = req.params.id;
-
-  db.serialize(() => {
-    // 먼저 이 티어리스트에 달린 아이템들 삭제
-    db.run(
-      `DELETE FROM items WHERE tierlist_id = ?`,
-      [id],
-      function (err) {
-        if (err) {
-          console.error(err);
-          return res.status(500).json({ error: 'server error' });
-        }
-
-        // 그 다음 티어리스트 자체 삭제
-        db.run(
-          `DELETE FROM tierlists WHERE id = ?`,
-          [id],
-          function (err2) {
-            if (err2) {
-              console.error(err2);
-              return res.status(500).json({ error: 'server error' });
-            }
-
-            // 삭제된 행이 없으면 존재하지 않는 id
-            if (this.changes === 0) {
-              return res.status(404).json({ error: 'not found' });
-            }
-
-            // 정상 삭제
-            return res.sendStatus(204);
-          }
-        );
-      }
-    );
-  });
-});
-
+// 아이템 추가
 app.post('/api/tierlists/:id/items', (req, res) => {
   const tierlistId = req.params.id;
   const { name, password, artist, title, imageUrl, description } = req.body;
@@ -262,6 +288,7 @@ app.post('/api/tierlists/:id/items', (req, res) => {
   });
 });
 
+// 아이템 수정
 app.patch('/api/items/:id', (req, res) => {
   const itemId = req.params.id;
   const { name, password, score, status, description } = req.body;
@@ -303,6 +330,102 @@ app.patch('/api/items/:id', (req, res) => {
       );
     });
   });
+});
+
+// 티어리스트 삭제 (items + public_tierlists 정리)
+app.delete('/api/tierlists/:id', (req, res) => {
+  const id = req.params.id;
+
+  db.serialize(() => {
+    db.run(`DELETE FROM public_tierlists WHERE tierlist_id = ?`, [id], function (err0) {
+      if (err0) {
+        console.error(err0);
+        // 계속 진행은 해도 됨
+      }
+    });
+
+    db.run(
+      `DELETE FROM items WHERE tierlist_id = ?`,
+      [id],
+      function (err) {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({ error: 'server error' });
+        }
+
+        db.run(
+          `DELETE FROM tierlists WHERE id = ?`,
+          [id],
+          function (err2) {
+            if (err2) {
+              console.error(err2);
+              return res.status(500).json({ error: 'server error' });
+            }
+
+            if (this.changes === 0) {
+              return res.status(404).json({ error: 'not found' });
+            }
+
+            return res.sendStatus(204);
+          }
+        );
+      }
+    );
+  });
+});
+
+// 관리자용: 전체 티어리스트 목록
+app.post('/api/admin/tierlists', (req, res) => {
+  const { adminKey } = req.body;
+  if (!assertAdminKey(adminKey)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  db.all(
+    `
+    SELECT tierlists.id,
+           tierlists.title,
+           tierlists.type,
+           users.name AS owner,
+           CASE WHEN public_tierlists.tierlist_id IS NULL THEN 0 ELSE 1 END AS isPublic
+    FROM tierlists
+    JOIN users ON tierlists.user_id = users.id
+    LEFT JOIN public_tierlists ON public_tierlists.tierlist_id = tierlists.id
+    ORDER BY tierlists.created_at DESC
+  `,
+    [],
+    (err, rows) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'server error' });
+      }
+      res.json(rows);
+    }
+  );
+});
+
+// 관리자용: 공개 티어표 등재
+app.post('/api/admin/tierlists/:id/publish', (req, res) => {
+  const { adminKey } = req.body;
+  if (!assertAdminKey(adminKey)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const id = req.params.id;
+
+  db.run(
+    `
+    INSERT OR IGNORE INTO public_tierlists (tierlist_id, published_at)
+    VALUES (?, CURRENT_TIMESTAMP)
+  `,
+    [id],
+    function (err) {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'server error' });
+      }
+      res.json({ ok: true });
+    }
+  );
 });
 
 const PORT = 3000;
