@@ -1,13 +1,42 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
 const app = express();
 
-// DB 파일 위치 (로컬 개발용·Render Disk 사용 시 이 경로만 바꾸면 됨)
-const db = new sqlite3.Database('./tierlist.db');
+// ---------------------------------------------
+// DB (Render Persistent Disk 지원)
+// Render Persistent Disk: mount path 아래만 영구 보존됨
+// ---------------------------------------------
+const DISK_MOUNT_PATH = process.env.DISK_MOUNT_PATH || '/var/data'; // Render에서 설정한 mount path와 동일하게
+const DB_FILENAME = process.env.SQLITE_DB_PATH || path.join(DISK_MOUNT_PATH, 'tierlist.db');
+
+// mount path가 없으면 생성(로컬 개발에서도 편하게)
+try {
+  fs.mkdirSync(path.dirname(DB_FILENAME), { recursive: true });
+} catch (e) {
+  // mkdir 실패해도 바로 죽이진 않되, DB open 실패 로그에서 확인 가능
+  console.error('Failed to ensure DB directory:', e);
+}
+
+const db = new sqlite3.Database(DB_FILENAME, (err) => {
+  if (err) {
+    console.error('Failed to open SQLite DB:', DB_FILENAME, err);
+  } else {
+    console.log('SQLite DB path:', DB_FILENAME);
+  }
+});
+
+// SQLite 동시성/안정성 옵션(특히 Render 같이 IO가 느릴 수 있는 환경에서 도움)
+db.serialize(() => {
+  db.run(`PRAGMA journal_mode=WAL;`);
+  db.run(`PRAGMA synchronous=NORMAL;`);
+  db.run(`PRAGMA foreign_keys=ON;`);
+  db.run(`PRAGMA busy_timeout=5000;`);
+});
 
 // 관리자 비밀번호(마스터키)는 서버에만 둔다.
 const ADMIN_KEY = process.env.ADMIN_KEY || 'PSMASTERKEY';
@@ -139,41 +168,27 @@ function assertAdminToken(token) {
 function deleteTierlistInDb(id, cb) {
   db.serialize(() => {
     db.run(`DELETE FROM public_tierlists WHERE tierlist_id = ?`, [id], function (err0) {
-      if (err0) {
-        console.error(err0);
-      }
+      if (err0) console.error(err0);
     });
 
-    db.run(
-      `DELETE FROM tierlist_likes WHERE tierlist_id = ?`,
-      [id],
-      function (err0b) {
-        if (err0b) console.error(err0b);
-      }
-    );
+    db.run(`DELETE FROM tierlist_likes WHERE tierlist_id = ?`, [id], function (err0b) {
+      if (err0b) console.error(err0b);
+    });
 
-    db.run(
-      `DELETE FROM items WHERE tierlist_id = ?`,
-      [id],
-      function (err1) {
-        if (err1) {
-          console.error(err1);
-          return cb(err1);
+    db.run(`DELETE FROM items WHERE tierlist_id = ?`, [id], function (err1) {
+      if (err1) {
+        console.error(err1);
+        return cb(err1);
+      }
+
+      db.run(`DELETE FROM tierlists WHERE id = ?`, [id], function (err2) {
+        if (err2) {
+          console.error(err2);
+          return cb(err2);
         }
-
-        db.run(
-          `DELETE FROM tierlists WHERE id = ?`,
-          [id],
-          function (err2) {
-            if (err2) {
-              console.error(err2);
-              return cb(err2);
-            }
-            cb(null, this.changes); // 0이면 없는 id
-          }
-        );
-      }
-    );
+        cb(null, this.changes); // 0이면 없는 id
+      });
+    });
   });
 }
 
@@ -620,100 +635,91 @@ app.post('/api/tierlists/:id/like', (req, res) => {
     return res.status(400).json({ error: 'missing clientKey' });
   }
 
-  db.get(
-    `SELECT * FROM public_tierlists WHERE tierlist_id = ?`,
-    [tierlistId],
-    (err, pubRow) => {
-      if (err) return res.status(500).json({ error: 'server error' });
-      if (!pubRow) return res.status(404).json({ error: 'not published' });
+  db.get(`SELECT * FROM public_tierlists WHERE tierlist_id = ?`, [tierlistId], (err, pubRow) => {
+    if (err) return res.status(500).json({ error: 'server error' });
+    if (!pubRow) return res.status(404).json({ error: 'not published' });
 
-      db.get(
-        `SELECT * FROM tierlist_likes WHERE tierlist_id = ? AND client_key = ?`,
-        [tierlistId, clientKey],
-        (err2, likeRow) => {
-          if (err2) return res.status(500).json({ error: 'server error' });
+    db.get(
+      `SELECT * FROM tierlist_likes WHERE tierlist_id = ? AND client_key = ?`,
+      [tierlistId, clientKey],
+      (err2, likeRow) => {
+        if (err2) return res.status(500).json({ error: 'server error' });
 
-          if (likeRow) {
-            db.serialize(() => {
-              db.run(
-                `DELETE FROM tierlist_likes WHERE id = ?`,
-                [likeRow.id],
-                function (err3) {
-                  if (err3) {
-                    console.error(err3);
-                  }
-                }
-              );
-              db.run(
-                `
-                UPDATE public_tierlists
-                SET like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0 END
-                WHERE tierlist_id = ?
-              `,
-                [tierlistId],
-                function (err4) {
-                  if (err4) {
-                    console.error(err4);
-                    return res.status(500).json({ error: 'server error' });
-                  }
-                  db.get(
-                    `SELECT like_count FROM public_tierlists WHERE tierlist_id = ?`,
-                    [tierlistId],
-                    (err5, row5) => {
-                      if (err5) return res.status(500).json({ error: 'server error' });
-                      res.json({ liked: false, likeCount: row5 ? row5.like_count : 0 });
-                    }
-                  );
-                }
-              );
+        if (likeRow) {
+          db.serialize(() => {
+            db.run(`DELETE FROM tierlist_likes WHERE id = ?`, [likeRow.id], function (err3) {
+              if (err3) console.error(err3);
             });
-          } else {
-            db.serialize(() => {
-              db.run(
-                `
-                INSERT INTO tierlist_likes (tierlist_id, client_key)
-                VALUES (?, ?)
-              `,
-                [tierlistId, clientKey],
-                function (err3) {
-                  if (err3) {
-                    if (err3.code === 'SQLITE_CONSTRAINT') {
-                      return res.status(409).json({ error: 'already liked' });
-                    }
-                    console.error(err3);
-                    return res.status(500).json({ error: 'server error' });
-                  }
 
-                  db.run(
-                    `
-                    UPDATE public_tierlists
-                    SET like_count = like_count + 1
-                    WHERE tierlist_id = ?
-                  `,
-                    [tierlistId],
-                    function (err4) {
-                      if (err4) {
-                        console.error(err4);
-                        return res.status(500).json({ error: 'server error' });
+            db.run(
+              `
+              UPDATE public_tierlists
+              SET like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0 END
+              WHERE tierlist_id = ?
+            `,
+              [tierlistId],
+              function (err4) {
+                if (err4) {
+                  console.error(err4);
+                  return res.status(500).json({ error: 'server error' });
+                }
+                db.get(
+                  `SELECT like_count FROM public_tierlists WHERE tierlist_id = ?`,
+                  [tierlistId],
+                  (err5, row5) => {
+                    if (err5) return res.status(500).json({ error: 'server error' });
+                    res.json({ liked: false, likeCount: row5 ? row5.like_count : 0 });
+                  }
+                );
+              }
+            );
+          });
+        } else {
+          db.serialize(() => {
+            db.run(
+              `
+              INSERT INTO tierlist_likes (tierlist_id, client_key)
+              VALUES (?, ?)
+            `,
+              [tierlistId, clientKey],
+              function (err3) {
+                if (err3) {
+                  if (err3.code === 'SQLITE_CONSTRAINT') {
+                    return res.status(409).json({ error: 'already liked' });
+                  }
+                  console.error(err3);
+                  return res.status(500).json({ error: 'server error' });
+                }
+
+                db.run(
+                  `
+                  UPDATE public_tierlists
+                  SET like_count = like_count + 1
+                  WHERE tierlist_id = ?
+                `,
+                  [tierlistId],
+                  function (err4) {
+                    if (err4) {
+                      console.error(err4);
+                      return res.status(500).json({ error: 'server error' });
+                    }
+                    db.get(
+                      `SELECT like_count FROM public_tierlists WHERE tierlist_id = ?`,
+                      [tierlistId],
+                      (err5, row5) => {
+                        if (err5) return res.status(500).json({ error: 'server error' });
+                        res.json({ liked: true, likeCount: row5 ? row5.like_count : 0 });
                       }
-                      db.get(
-                        `SELECT like_count FROM public_tierlists WHERE tierlist_id = ?`,
-                        [tierlistId],
-                        (err5, row5) => {
-                          if (err5) return res.status(500).json({ error: 'server error' });
-                          res.json({ liked: true, likeCount: row5 ? row5.like_count : 0 });
-                        }
-                      );
-                    }
-                  );
-                }
-              );
-            });
-          }
+                    );
+                  }
+                );
+              }
+            );
+          });
         }
-      );
-    }
-  );
+      }
+    );
+  });
 });
 
 // 해당 클라이언트가 특정 티어리스트에 좋아요 눌렀는지 확인
@@ -744,8 +750,8 @@ app.post('/api/tierlists/:id/is-liked', (req, res) => {
 });
 
 // ----------------- 서버 시작 -----------------
-
-const PORT = 3000;
+// Render에서는 PORT가 환경변수로 주어질 수 있음
+const PORT = parseInt(process.env.PORT || '3000', 10);
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
