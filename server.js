@@ -1,41 +1,46 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs'); // (추가) 디스크 경로 폴더 생성용
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
 const app = express();
 
-// ---------------------------------------------
-// DB (Render Persistent Disk 지원)
-// Render Persistent Disk: mount path 아래만 영구 보존됨
-// ---------------------------------------------
-const DISK_MOUNT_PATH = process.env.DISK_MOUNT_PATH || '/var/data'; // Render에서 설정한 mount path와 동일하게
-const DB_FILENAME = process.env.SQLITE_DB_PATH || path.join(DISK_MOUNT_PATH, 'tierlist.db');
+/**
+ * =========================
+ * SQLite on Render Disk
+ * =========================
+ * Render는 기본 파일시스템이 ephemeral이고,
+ * persistent disk의 mount path 아래만 deploy/restart 후에도 유지됨.
+ * 그래서 SQLite 파일을 반드시 /var/data 아래로 둬야 함.
+ */
+const DISK_PATH = '/var/data';
+const DB_PATH = path.join(DISK_PATH, 'tierlist.db');
 
-// mount path가 없으면 생성(로컬 개발에서도 편하게)
+// (추가) 폴더가 없으면 생성 (로컬에서도 문제없게)
 try {
-  fs.mkdirSync(path.dirname(DB_FILENAME), { recursive: true });
+  fs.mkdirSync(DISK_PATH, { recursive: true });
 } catch (e) {
-  // mkdir 실패해도 바로 죽이진 않되, DB open 실패 로그에서 확인 가능
-  console.error('Failed to ensure DB directory:', e);
+  console.error('[BOOT] Failed to ensure disk path:', e);
 }
 
-const db = new sqlite3.Database(DB_FILENAME, (err) => {
+// (수정) DB 파일 위치를 Render Disk로 고정
+const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
-    console.error('Failed to open SQLite DB:', DB_FILENAME, err);
+    console.error('[BOOT] Failed to open SQLite DB at:', DB_PATH, err);
   } else {
-    console.log('SQLite DB path:', DB_FILENAME);
+    console.log('[BOOT] Using SQLite DB at:', DB_PATH);
   }
 });
 
-// SQLite 동시성/안정성 옵션(특히 Render 같이 IO가 느릴 수 있는 환경에서 도움)
+// (추가) SQLite 안정성 옵션(선택이지만 Render 환경에서 도움이 됨)
 db.serialize(() => {
-  db.run(`PRAGMA journal_mode=WAL;`);
-  db.run(`PRAGMA synchronous=NORMAL;`);
   db.run(`PRAGMA foreign_keys=ON;`);
   db.run(`PRAGMA busy_timeout=5000;`);
+  // WAL은 동시성에 유리하지만 -wal/-shm 파일도 같이 생길 수 있음(정상)
+  db.run(`PRAGMA journal_mode=WAL;`);
+  db.run(`PRAGMA synchronous=NORMAL;`);
 });
 
 // 관리자 비밀번호(마스터키)는 서버에만 둔다.
@@ -168,7 +173,9 @@ function assertAdminToken(token) {
 function deleteTierlistInDb(id, cb) {
   db.serialize(() => {
     db.run(`DELETE FROM public_tierlists WHERE tierlist_id = ?`, [id], function (err0) {
-      if (err0) console.error(err0);
+      if (err0) {
+        console.error(err0);
+      }
     });
 
     db.run(`DELETE FROM tierlist_likes WHERE tierlist_id = ?`, [id], function (err0b) {
@@ -466,12 +473,9 @@ app.patch('/api/items/:id', (req, res) => {
 
     const proceed = () => {
       const newScore =
-        typeof score === 'number' || score === null
-          ? score
-          : item.score;
+        typeof score === 'number' || score === null ? score : item.score;
       const newStatus = status || item.status;
-      const newDesc =
-        typeof description === 'string' ? description : item.description;
+      const newDesc = typeof description === 'string' ? description : item.description;
 
       db.run(
         `
@@ -750,7 +754,7 @@ app.post('/api/tierlists/:id/is-liked', (req, res) => {
 });
 
 // ----------------- 서버 시작 -----------------
-// Render에서는 PORT가 환경변수로 주어질 수 있음
+// Render web service는 PORT 환경변수를 주는 경우가 많음
 const PORT = parseInt(process.env.PORT || '3000', 10);
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
